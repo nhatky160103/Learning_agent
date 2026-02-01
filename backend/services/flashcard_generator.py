@@ -13,23 +13,27 @@ class FlashcardGenerator:
     
     def _init_llm(self):
         """Initialize LLM client."""
-        if settings.openai_api_key:
+        is_openai_placeholder = "your_openai_api_key_here" in settings.openai_api_key
+        
+        if settings.google_api_key:
+            try:
+                from langchain_google_genai import ChatGoogleGenerativeAI
+                self.llm = ChatGoogleGenerativeAI(
+                    model="gemini-2.5-flash",
+                    google_api_key=settings.google_api_key,
+                    temperature=0.7
+                )
+                if is_openai_placeholder:
+                    return
+            except Exception:
+                pass
+
+        if settings.openai_api_key and not is_openai_placeholder:
             try:
                 from langchain_openai import ChatOpenAI
                 self.llm = ChatOpenAI(
                     model="gpt-4o-mini",
                     api_key=settings.openai_api_key,
-                    temperature=0.7
-                )
-            except Exception:
-                pass
-        
-        if not self.llm and settings.google_api_key:
-            try:
-                from langchain_google_genai import ChatGoogleGenerativeAI
-                self.llm = ChatGoogleGenerativeAI(
-                    model="gemini-1.5-flash",
-                    google_api_key=settings.google_api_key,
                     temperature=0.7
                 )
             except Exception:

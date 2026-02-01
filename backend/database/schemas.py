@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import List, Optional, Any
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, computed_field
 from uuid import UUID
 
 
@@ -83,6 +83,12 @@ class DocumentResponse(DocumentBase):
     chunk_count: int
     created_at: datetime
     processed_at: Optional[datetime] = None
+    
+    @computed_field
+    @property
+    def original_filename(self) -> str:
+        """Alias for title to maintain frontend compatibility"""
+        return self.title
     
     class Config:
         from_attributes = True
@@ -247,6 +253,8 @@ class QuizResult(BaseModel):
     score: float
     max_score: int
     percentage: float
+    correct_count: int
+    total_questions: int
     time_taken_seconds: int
     results: List[QuestionResult]
     xp_earned: int

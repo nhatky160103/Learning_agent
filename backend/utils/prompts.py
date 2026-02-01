@@ -86,7 +86,7 @@ OUTPUT FORMAT (JSON):
   "question_type": "true_false",
   "question_text": "A statement that is either true or false",
   "correct_answer": "True|False",
-  "options": null,
+  "options": ["True", "False"],
   "explanation": "Why this is true/false"
 }}
 

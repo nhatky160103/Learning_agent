@@ -34,7 +34,7 @@ export default function ChatPage() {
     const loadDocuments = async () => {
         try {
             const docs = await documentsApi.list();
-            setDocuments(docs.filter((d: any) => d.status === 'processed'));
+            setDocuments(docs.filter((d: any) => d.status === 'processed' || d.status === 'ready'));
         } catch (error) {
             console.error('Failed to load documents:', error);
         }
@@ -177,8 +177,8 @@ export default function ChatPage() {
                                             )}
 
                                             <div className={`rounded-2xl px-5 py-4 ${message.role === 'user'
-                                                    ? 'bg-gradient-to-r from-primary-500 to-accent-500 text-white'
-                                                    : 'bg-white/5 text-gray-200'
+                                                ? 'bg-gradient-to-r from-primary-500 to-accent-500 text-white'
+                                                : 'bg-white/5 text-gray-200'
                                                 }`}>
                                                 <p className="whitespace-pre-wrap">{message.content}</p>
                                             </div>

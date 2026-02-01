@@ -105,7 +105,7 @@ export default function DocumentsPage() {
     };
 
     const filteredDocs = documents.filter(doc =>
-        doc.original_filename.toLowerCase().includes(searchQuery.toLowerCase())
+        doc.original_filename?.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
     const formatFileSize = (bytes: number) => {
@@ -233,7 +233,7 @@ export default function DocumentsPage() {
                                 <div className="mt-4 pt-4 border-t border-white/10 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                     <button
                                         onClick={() => handleGenerateFlashcards(doc)}
-                                        disabled={doc.status !== 'processed' || generatingFlashcards === doc.id}
+                                        disabled={(doc.status !== 'ready' && doc.status !== 'processed') || generatingFlashcards === doc.id}
                                         className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-primary-500/20 text-primary-400 hover:bg-primary-500/30 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
                                     >
                                         {generatingFlashcards === doc.id ? (

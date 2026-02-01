@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
     Trophy, Plus, Play, FileText, Layers, Clock,
     CheckCircle, XCircle, Search, Loader2, ArrowRight,
-    Target, Star, BarChart2
+    Target, Star, BarChart2, Trash2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { quizzesApi, documentsApi, flashcardsApi } from '@/lib/api';
@@ -25,9 +25,9 @@ interface Quiz {
 interface QuizQuestion {
     id: string;
     question_type: string;
-    question: string;
-    options?: string[];
-    correct_answer: string;
+    question_text: string;
+    options?: string[] | Record<string, string>;
+    correct_answer?: string;
     explanation?: string;
 }
 
@@ -70,7 +70,7 @@ export default function QuizzesPage() {
                 flashcardsApi.listDecks(),
             ]);
             setQuizzes(quizzesData);
-            setDocuments(docsData.filter((d: any) => d.status === 'processed'));
+            setDocuments(docsData.filter((d: any) => d.status === 'ready' || d.status === 'processed'));
             setDecks(decksData);
         } catch (error) {
             console.error('Failed to load data:', error);
@@ -108,6 +108,20 @@ export default function QuizzesPage() {
             toast.error(error.response?.data?.detail || 'Failed to generate quiz');
         } finally {
             setGenerating(false);
+        }
+    };
+
+    const handleDelete = async (quizId: string, quizTitle: string) => {
+        if (!confirm(`Are you sure you want to delete "${quizTitle}"?`)) {
+            return;
+        }
+
+        try {
+            await quizzesApi.delete(quizId);
+            setQuizzes(quizzes.filter(q => q.id !== quizId));
+            toast.success('Quiz deleted successfully');
+        } catch (error: any) {
+            toast.error(error.response?.data?.detail || 'Failed to delete quiz');
         }
     };
 
@@ -177,7 +191,7 @@ export default function QuizzesPage() {
                     <p className="text-gray-400 mb-6">{activeQuiz?.title}</p>
 
                     <div className="text-6xl font-bold gradient-text mb-4">
-                        {quizResult.score}%
+                        {quizResult.percentage}%
                     </div>
 
                     <div className="flex items-center justify-center gap-6 mb-8">
@@ -246,38 +260,55 @@ export default function QuizzesPage() {
                     animate={{ opacity: 1, x: 0 }}
                     className="glass rounded-2xl p-8 w-full max-w-2xl"
                 >
-                    <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium mb-4 ${question.question_type === 'multiple_choice' ? 'bg-blue-500/20 text-blue-400' :
-                            question.question_type === 'true_false' ? 'bg-purple-500/20 text-purple-400' :
-                                'bg-orange-500/20 text-orange-400'
+                    <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium mb-4 ${(question.question_type === 'multiple_choice' || question.question_type === 'mcq') ? 'bg-blue-500/20 text-blue-400' :
+                        question.question_type === 'true_false' ? 'bg-purple-500/20 text-purple-400' :
+                            'bg-orange-500/20 text-orange-400'
                         }`}>
-                        {question.question_type.replace('_', ' ')}
+                        {(question.question_type === 'mcq' ? 'multiple choice' : question.question_type).replace('_', ' ')}
                     </span>
 
-                    <h3 className="text-xl font-semibold text-white mb-6">{question.question}</h3>
+                    <h3 className="text-xl font-semibold text-white mb-6">{question.question_text}</h3>
 
                     {/* Options */}
                     <div className="space-y-3">
-                        {question.options?.map((option, index) => (
-                            <button
-                                key={index}
-                                onClick={() => setAnswers({ ...answers, [question.id]: option })}
-                                className={`w-full text-left px-4 py-3 rounded-xl border transition-all ${selectedAnswer === option
+                        {question.question_type === 'true_false' ? (
+                            // True/False questions
+                            ['True', 'False'].map((option) => (
+                                <button
+                                    key={option}
+                                    onClick={() => setAnswers({ ...answers, [question.id]: option })}
+                                    className={`w-full text-left px-4 py-3 rounded-xl border transition-all ${selectedAnswer === option
                                         ? 'border-primary-500 bg-primary-500/20 text-white'
                                         : 'border-white/10 bg-white/5 text-gray-300 hover:border-white/30'
-                                    }`}
-                            >
-                                {option}
-                            </button>
-                        )) || (
-                                // For fill-in-the-blank
-                                <input
-                                    type="text"
-                                    value={selectedAnswer || ''}
-                                    onChange={(e) => setAnswers({ ...answers, [question.id]: e.target.value })}
-                                    placeholder="Type your answer..."
-                                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-primary-500"
-                                />
-                            )}
+                                        }`}
+                                >
+                                    {option}
+                                </button>
+                            ))
+                        ) : (question.question_type === 'mcq' || question.question_type === 'multiple_choice' || question.options) ? (
+                            // Multiple choice questions
+                            (Array.isArray(question.options) ? question.options : (question.options ? Object.values(question.options) : []))?.map((option, index) => (
+                                <button
+                                    key={index}
+                                    onClick={() => setAnswers({ ...answers, [question.id]: option })}
+                                    className={`w-full text-left px-4 py-3 rounded-xl border transition-all ${selectedAnswer === option
+                                        ? 'border-primary-500 bg-primary-500/20 text-white'
+                                        : 'border-white/10 bg-white/5 text-gray-300 hover:border-white/30'
+                                        }`}
+                                >
+                                    {option}
+                                </button>
+                            ))
+                        ) : (
+                            // For fill-in-the-blank or other types
+                            <input
+                                type="text"
+                                value={selectedAnswer || ''}
+                                onChange={(e) => setAnswers({ ...answers, [question.id]: e.target.value })}
+                                placeholder="Type your answer..."
+                                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-primary-500"
+                            />
+                        )}
                     </div>
                 </motion.div>
 
@@ -490,8 +521,20 @@ export default function QuizzesPage() {
                             key={quiz.id}
                             initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
-                            className="glass rounded-2xl p-6 hover-lift group"
+                            className="glass rounded-2xl p-6 hover-lift group relative"
                         >
+                            {/* Delete button */}
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDelete(quiz.id, quiz.title);
+                                }}
+                                className="absolute top-4 right-4 p-2 rounded-lg bg-white/5 text-gray-400 hover:bg-red-500/20 hover:text-red-400 transition-all opacity-0 group-hover:opacity-100"
+                                title="Delete quiz"
+                            >
+                                <Trash2 className="w-4 h-4" />
+                            </button>
+
                             <div className="flex items-start justify-between mb-4">
                                 <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center">
                                     <Trophy className="w-6 h-6 text-white" />

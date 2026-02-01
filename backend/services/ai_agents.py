@@ -24,24 +24,29 @@ class AIAgentOrchestrator:
     
     def _init_llm(self):
         """Initialize LLM client with available API."""
-        if settings.openai_api_key:
-            try:
-                from langchain_openai import ChatOpenAI
-                self.llm = ChatOpenAI(
-                    model="gpt-4o-mini",
-                    api_key=settings.openai_api_key,
-                    temperature=0.7
-                )
-                return
-            except Exception:
-                pass
+        # Use Google Gemini if configured, especially if OpenAI is just a placeholder
+        is_openai_placeholder = "your_openai_api_key_here" in settings.openai_api_key
         
         if settings.google_api_key:
             try:
                 from langchain_google_genai import ChatGoogleGenerativeAI
                 self.llm = ChatGoogleGenerativeAI(
-                    model="gemini-1.5-flash",
+                    model="gemini-2.5-flash",
                     google_api_key=settings.google_api_key,
+                    temperature=0.7
+                )
+                # If we successfully initialized Gemini and OpenAI is just a placeholder, we're done
+                if is_openai_placeholder:
+                    return
+            except Exception:
+                pass
+        
+        if settings.openai_api_key and not is_openai_placeholder:
+            try:
+                from langchain_openai import ChatOpenAI
+                self.llm = ChatOpenAI(
+                    model="gpt-4o-mini",
+                    api_key=settings.openai_api_key,
                     temperature=0.7
                 )
             except Exception:
@@ -78,7 +83,7 @@ class AIAgentOrchestrator:
         
         if history:
             for msg in history[-10:]:  # Keep last 10 messages
-                messages.append({"role": msg["role"], "content": msg["content"]})
+                messages.append({"role": msg.role, "content": msg.content})
         
         messages.append({"role": "user", "content": message})
         
