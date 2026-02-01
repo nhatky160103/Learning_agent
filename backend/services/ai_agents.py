@@ -18,9 +18,12 @@ class AIAgentOrchestrator:
     - Concept Extractor: Extracts key concepts from content
     """
     
-    def __init__(self):
+    def __init__(self, user_id: str = None):
         self.llm = None
+        self.user_id = user_id
+        self.vector_store = None
         self._init_llm()
+        self._init_vector_store()
     
     def _init_llm(self):
         """Initialize LLM client with available API."""
@@ -52,19 +55,32 @@ class AIAgentOrchestrator:
             except Exception:
                 pass
     
+    def _init_vector_store(self):
+        """Initialize vector store for RAG."""
+        try:
+            from services.vector_store import get_vector_store
+            self.vector_store = get_vector_store()
+        except Exception as e:
+            print(f"Warning: Vector store not available for RAG: {e}")
+            self.vector_store = None
+    
     async def chat(
         self,
         message: str,
         context: str = "",
-        history: List[Dict] = None
+        history: List[Dict] = None,
+        use_rag: bool = True,
+        document_filters: Dict = None
     ) -> Dict:
         """
-        Handle a chat message with context-aware responses.
+        Handle a chat message with context-aware responses and RAG.
         
         Args:
             message: User's message
-            context: Document or study material context
+            context: Document or study material context (legacy)
             history: Previous conversation messages
+            use_rag: Whether to use RAG for context retrieval (default: True)
+            document_filters: Optional filters for document retrieval
         
         Returns:
             Dict with response, sources, and suggested actions
@@ -76,8 +92,36 @@ class AIAgentOrchestrator:
                 "suggested_actions": ["Configure API key in .env file"]
             }
         
+        # Retrieve context from vector store if RAG is enabled
+        retrieved_context = ""
+        sources = []
+        
+        if use_rag and self.vector_store and self.user_id:
+            try:
+                retrieved_chunks = await self._retrieve_context(
+                    query=message,
+                    top_k=getattr(settings, 'retrieval_top_k', 5),
+                    filters=document_filters
+                )
+                
+                if retrieved_chunks:
+                    # Build context from retrieved chunks
+                    context_parts = []
+                    for chunk in retrieved_chunks:
+                        context_parts.append(f"[From {chunk['metadata'].get('title', 'document')}]\n{chunk['text']}")
+                    
+                    retrieved_context = "\n\n".join(context_parts)
+                    sources = self._format_sources(retrieved_chunks)
+            except Exception as e:
+                print(f"Error retrieving context: {e}")
+        
+        # Combine retrieved context with provided context
+        full_context = retrieved_context if retrieved_context else context
+        if not full_context:
+            full_context = "No specific documents loaded."
+        
         # Build conversation
-        system_prompt = CHAT_SYSTEM_PROMPT.format(context=context[:5000] if context else "No specific documents loaded.")
+        system_prompt = CHAT_SYSTEM_PROMPT.format(context=full_context[:5000])
         
         messages = [{"role": "system", "content": system_prompt}]
         
@@ -106,7 +150,7 @@ class AIAgentOrchestrator:
             
             return {
                 "response": response.content,
-                "sources": None,
+                "sources": sources if sources else None,
                 "suggested_actions": suggested_actions
             }
             
@@ -309,3 +353,87 @@ Output only valid JSON."""
             actions.append("See related concepts")
         
         return actions if actions else None
+    
+    async def _retrieve_context(
+        self,
+        query: str,
+        top_k: int = 5,
+        filters: Dict = None
+    ) -> List[Dict]:
+        """
+        Retrieve relevant context from vector store.
+        
+        Args:
+            query: Search query
+            top_k: Number of chunks to retrieve
+            filters: Optional metadata filters
+        
+        Returns:
+            List of relevant chunks with metadata
+        """
+        if not self.vector_store or not self.user_id:
+            return []
+        
+        try:
+            # Add user_id to filters
+            search_filters = {"user_id": self.user_id}
+            if filters:
+                search_filters.update(filters)
+            
+            # Retrieve from vector store
+            results = await self.vector_store.search(
+                query=query,
+                top_k=top_k,
+                filters=search_filters,
+                similarity_threshold=getattr(settings, 'similarity_threshold', 0.7)
+            )
+            
+            return results
+            
+        except Exception as e:
+            print(f"Error in context retrieval: {e}")
+            return []
+    
+    def _format_sources(self, chunks: List[Dict]) -> List[Dict]:
+        """
+        Format retrieved chunks as source citations.
+        
+        Args:
+            chunks: Retrieved chunks from vector store
+        
+        Returns:
+            List of formatted source citations
+        """
+        sources = []
+        
+        for chunk in chunks:
+            metadata = chunk.get('metadata', {})
+            source = {
+                "document_id": metadata.get('document_id'),
+                "document_title": metadata.get('title', 'Unknown'),
+                "chunk_text": chunk.get('text', '')[:200] + "...",  # Preview
+                "relevance_score": chunk.get('similarity_score', 0),
+                "chunk_index": metadata.get('chunk_index', 0)
+            }
+            sources.append(source)
+        
+        return sources
+    
+    async def search_documents(
+        self,
+        query: str,
+        filters: Dict = None,
+        top_k: int = 10
+    ) -> List[Dict]:
+        """
+        Search across user's documents.
+        
+        Args:
+            query: Search query
+            filters: Optional metadata filters
+            top_k: Number of results
+        
+        Returns:
+            List of search results
+        """
+        return await self._retrieve_context(query, top_k=top_k, filters=filters)

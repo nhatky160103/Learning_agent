@@ -21,25 +21,31 @@ async def chat_message(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Send a chat message to the AI assistant."""
+    """Send a chat message to the AI assistant with RAG support."""
     context = ""
+    document_filters = None
     
-    # Get document context if provided
+    # Get document context if provided (legacy support)
     if request.document_id:
         result = await db.execute(
             select(Document)
             .where(Document.id == request.document_id, Document.user_id == current_user.id)
         )
         document = result.scalar_one_or_none()
-        if document and document.content_text:
-            context = document.content_text[:10000]  # Limit context size
+        if document:
+            # Use document filter for RAG instead of direct context
+            document_filters = {"document_id": str(request.document_id)}
+            if document.content_text:
+                context = document.content_text[:10000]  # Fallback context
     
-    # Get AI response
-    orchestrator = AIAgentOrchestrator()
+    # Get AI response with RAG
+    orchestrator = AIAgentOrchestrator(user_id=str(current_user.id))
     response = await orchestrator.chat(
         message=request.message,
         context=context,
-        history=request.conversation_history
+        history=request.conversation_history,
+        use_rag=True,  # Enable RAG by default
+        document_filters=document_filters
     )
     
     return ChatResponse(

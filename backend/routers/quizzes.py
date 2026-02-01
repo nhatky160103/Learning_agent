@@ -99,8 +99,14 @@ async def generate_quiz(
     
     await db.commit()
     
-    # Refresh quiz with eager-loaded questions
-    await db.refresh(quiz, attribute_names=['questions'])
+    # Reload quiz with eager-loaded questions
+    result = await db.execute(
+        select(Quiz)
+        .options(selectinload(Quiz.questions))
+        .where(Quiz.id == quiz.id)
+    )
+    quiz = result.scalar_one()
+    
     return quiz
 
 
@@ -125,22 +131,16 @@ async def get_quiz(
     db: AsyncSession = Depends(get_db)
 ):
     """Get a quiz with its questions (without correct answers)."""
+    # Use eager loading to avoid lazy loading issues
     result = await db.execute(
         select(Quiz)
+        .options(selectinload(Quiz.questions))
         .where(Quiz.id == quiz_id, Quiz.user_id == current_user.id)
     )
     quiz = result.scalar_one_or_none()
     
     if not quiz:
         raise HTTPException(status_code=404, detail="Quiz not found")
-    
-    # Get questions
-    questions_result = await db.execute(
-        select(QuizQuestion)
-        .where(QuizQuestion.quiz_id == quiz_id)
-        .order_by(QuizQuestion.order_index)
-    )
-    quiz.questions = questions_result.scalars().all()
     
     return quiz
 

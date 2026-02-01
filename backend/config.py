@@ -21,6 +21,14 @@ class Settings(BaseSettings):
     chroma_host: str = "localhost"
     chroma_port: int = 8000
     
+    # Vector Store
+    embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+    chroma_collection: str = "learning_documents"
+    chunk_size: int = 500
+    chunk_overlap: int = 50
+    retrieval_top_k: int = 5
+    similarity_threshold: float = 0.7
+    
     # JWT
     secret_key: str = "your-super-secret-key-change-in-production"
     algorithm: str = "HS256"

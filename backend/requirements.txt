@@ -32,7 +32,7 @@ langchain-google-genai>=0.0.6
 langchain-community>=0.0.14
 openai>=1.10.0
 google-generativeai>=0.3.2
-chromadb>=0.4.22
+chromadb==1.4.1
 sentence-transformers>=2.3.1
 
 # NLP
@@ -41,10 +41,9 @@ keybert==0.8.3
 
 # Utilities
 aiofiles==23.2.1
-httpx==0.26.0
+httpx==0.28.1
 celery==5.3.6
 
 # Testing
 pytest==7.4.4
 pytest-asyncio==0.23.3
-httpx==0.26.0

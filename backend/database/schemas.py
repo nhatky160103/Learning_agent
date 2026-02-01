@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Optional, Any
+from typing import List, Optional, Any, Union
 from pydantic import BaseModel, EmailStr, Field, computed_field
 from uuid import UUID
 
@@ -216,7 +216,7 @@ class QuizQuestionResponse(BaseModel):
     id: UUID
     question_type: str
     question_text: str
-    options: Optional[dict] = None  # For MCQ
+    options: Optional[Union[dict, list]] = None  # For MCQ (dict) or True/False (list)
     points: int
     order_index: int
     
