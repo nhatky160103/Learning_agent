@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+env/
+.env
+
+# Node.js
+node_modules/
+.next/
+out/
+build/
+dist/
+.DS_Store
+*.log
+
+# Databases
+postgres_data/
+redis_data/
+chroma_data/
+
+# IDEs
+.vscode/
+.idea/
+.gemini/
