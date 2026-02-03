@@ -1,8 +1,10 @@
 from datetime import datetime
+
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from database.connection import get_db
 from database.models import User, Document, Deck, Quiz, QuizQuestion, QuizAttempt
@@ -97,10 +99,14 @@ async def generate_quiz(
     
     await db.commit()
     
-    for q in questions:
-        await db.refresh(q)
+    # Reload quiz with eager-loaded questions
+    result = await db.execute(
+        select(Quiz)
+        .options(selectinload(Quiz.questions))
+        .where(Quiz.id == quiz.id)
+    )
+    quiz = result.scalar_one()
     
-    quiz.questions = questions
     return quiz
 
 
@@ -125,22 +131,16 @@ async def get_quiz(
     db: AsyncSession = Depends(get_db)
 ):
     """Get a quiz with its questions (without correct answers)."""
+    # Use eager loading to avoid lazy loading issues
     result = await db.execute(
         select(Quiz)
+        .options(selectinload(Quiz.questions))
         .where(Quiz.id == quiz_id, Quiz.user_id == current_user.id)
     )
     quiz = result.scalar_one_or_none()
     
     if not quiz:
         raise HTTPException(status_code=404, detail="Quiz not found")
-    
-    # Get questions
-    questions_result = await db.execute(
-        select(QuizQuestion)
-        .where(QuizQuestion.quiz_id == quiz_id)
-        .order_by(QuizQuestion.order_index)
-    )
-    quiz.questions = questions_result.scalars().all()
     
     return quiz
 
@@ -225,7 +225,7 @@ async def submit_quiz(
         )
         .order_by(QuizAttempt.started_at.desc())
     )
-    attempt = attempt_result.scalar_one_or_none()
+    attempt = attempt_result.scalars().first()
     
     if not attempt:
         # Create new attempt if none exists
@@ -246,6 +246,7 @@ async def submit_quiz(
     # Grade answers
     results = []
     total_score = 0
+    correct_count = 0
     answers_dict = {}
     
     for answer in submission.answers:
@@ -256,6 +257,9 @@ async def submit_quiz(
         is_correct = answer.user_answer.lower().strip() == question.correct_answer.lower().strip()
         points_earned = question.points if is_correct else 0
         total_score += points_earned
+        
+        if is_correct:
+            correct_count += 1
         
         answers_dict[str(answer.question_id)] = answer.user_answer
         
@@ -276,6 +280,7 @@ async def submit_quiz(
     
     # Calculate XP (base XP + bonus for accuracy)
     max_score = sum(q.points for q in questions.values())
+    total_questions = len(questions)
     percentage = (total_score / max_score * 100) if max_score > 0 else 0
     xp_earned = int(10 + (percentage / 10))  # 10 base + up to 10 bonus
     
@@ -290,6 +295,8 @@ async def submit_quiz(
         score=total_score,
         max_score=max_score,
         percentage=round(percentage, 1),
+        correct_count=correct_count,
+        total_questions=total_questions,
         time_taken_seconds=submission.time_taken_seconds,
         results=results,
         xp_earned=xp_earned

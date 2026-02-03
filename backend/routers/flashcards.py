@@ -4,6 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
+from sqlalchemy.orm import selectinload
 
 from database.connection import get_db
 from database.models import User, Document, Deck, Flashcard, FlashcardReview
@@ -62,20 +63,16 @@ async def get_deck(
     db: AsyncSession = Depends(get_db)
 ):
     """Get a deck with all its flashcards."""
+    # Use eager loading to avoid lazy loading issues in async context
     result = await db.execute(
         select(Deck)
+        .options(selectinload(Deck.flashcards))
         .where(Deck.id == deck_id, Deck.user_id == current_user.id)
     )
     deck = result.scalar_one_or_none()
     
     if not deck:
         raise HTTPException(status_code=404, detail="Deck not found")
-    
-    # Get flashcards
-    cards_result = await db.execute(
-        select(Flashcard).where(Flashcard.deck_id == deck_id)
-    )
-    deck.flashcards = cards_result.scalars().all()
     
     return deck
 
@@ -385,7 +382,14 @@ async def generate_flashcards(
     for card in flashcards:
         await db.refresh(card)
     
-    deck.flashcards = flashcards
+    # Reload deck with flashcards using eager loading
+    result = await db.execute(
+        select(Deck)
+        .options(selectinload(Deck.flashcards))
+        .where(Deck.id == deck.id)
+    )
+    deck = result.scalar_one()
+    
     return deck
 
 

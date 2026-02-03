@@ -79,8 +79,20 @@ async def process_document_background(document_id: str, file_path: str):
             return
         
         try:
-            # Process document
-            result = await processor.process(file_path)
+            # Prepare metadata for vector store
+            metadata = {
+                "user_id": str(document.user_id),
+                "title": document.title,
+                "file_type": document.file_type,
+                "created_at": document.created_at.isoformat()
+            }
+            
+            # Process document with vector store integration
+            result = await processor.process(
+                file_path,
+                document_id=str(document.id),
+                metadata=metadata
+            )
             
             document.content_text = result.get("content", "")
             document.content_summary = result.get("summary", "")
@@ -149,6 +161,13 @@ async def delete_document(
     if document.file_path and os.path.exists(document.file_path):
         os.remove(document.file_path)
     
+    # Delete from vector store
+    processor = DocumentProcessor()
+    try:
+        await processor.delete_document_embeddings(document_id)
+    except Exception as e:
+        print(f"Error deleting embeddings: {e}")
+    
     await db.delete(document)
     await db.commit()
     
@@ -180,3 +199,152 @@ async def get_document_content(
         "concepts": document.extracted_concepts,
         "chunk_count": document.chunk_count
     }
+
+
+@router.post("/search")
+async def search_documents(
+    query: str,
+    top_k: int = 5,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Semantic search across all user's documents.
+    
+    Args:
+        query: Search query text
+        top_k: Number of results to return (default: 5)
+    
+    Returns:
+        List of relevant document chunks with scores and metadata
+    """
+    from services.vector_store import get_vector_store
+    
+    try:
+        vector_store = get_vector_store()
+        
+        # Search with user_id filter
+        results = await vector_store.search(
+            query=query,
+            top_k=top_k,
+            filters={"user_id": str(current_user.id)}
+        )
+        
+        return {
+            "query": query,
+            "results": results,
+            "count": len(results)
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
+
+
+@router.post("/{document_id}/search")
+async def search_in_document(
+    document_id: str,
+    query: str,
+    top_k: int = 5,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Search within a specific document.
+    
+    Args:
+        document_id: Document to search within
+        query: Search query text
+        top_k: Number of results to return
+    
+    Returns:
+        Relevant chunks from the document
+    """
+    # Verify document ownership
+    result = await db.execute(
+        select(Document)
+        .where(Document.id == document_id, Document.user_id == current_user.id)
+    )
+    document = result.scalar_one_or_none()
+    
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    from services.vector_store import get_vector_store
+    
+    try:
+        vector_store = get_vector_store()
+        
+        results = await vector_store.search_by_document(
+            document_id=document_id,
+            query=query,
+            top_k=top_k
+        )
+        
+        return {
+            "document_id": document_id,
+            "document_title": document.title,
+            "query": query,
+            "results": results,
+            "count": len(results)
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
+
+
+@router.post("/{document_id}/reprocess")
+async def reprocess_document(
+    document_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Reprocess a document and regenerate embeddings.
+    Useful after updating embedding models or chunking strategies.
+    """
+    result = await db.execute(
+        select(Document)
+        .where(Document.id == document_id, Document.user_id == current_user.id)
+    )
+    document = result.scalar_one_or_none()
+    
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    if not document.file_path or not os.path.exists(document.file_path):
+        raise HTTPException(status_code=400, detail="Document file not found")
+    
+    try:
+        processor = DocumentProcessor()
+        
+        metadata = {
+            "user_id": str(document.user_id),
+            "title": document.title,
+            "file_type": document.file_type,
+            "created_at": document.created_at.isoformat()
+        }
+        
+        # Reprocess with new embeddings
+        result = await processor.reprocess_document(
+            document_id=str(document.id),
+            file_path=document.file_path,
+            metadata=metadata
+        )
+        
+        # Update database
+        document.content_text = result.get("content", "")
+        document.content_summary = result.get("summary", "")
+        document.extracted_concepts = result.get("concepts", {})
+        document.chunk_count = result.get("chunk_count", 0)
+        document.processed_at = datetime.utcnow()
+        
+        await db.commit()
+        await db.refresh(document)
+        
+        return {
+            "message": "Document reprocessed successfully",
+            "document": document
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Reprocessing failed: {str(e)}")
