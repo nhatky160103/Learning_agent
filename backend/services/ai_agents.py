@@ -160,6 +160,92 @@ class AIAgentOrchestrator:
                 "sources": None,
                 "suggested_actions": None
             }
+
+    async def chat_stream(
+        self,
+        message: str,
+        context: str = "",
+        history: List[Dict] = None,
+        use_rag: bool = True,
+        document_filters: Dict = None
+    ):
+        """
+        Stream chat response with RAG context.
+        Yields chunks of the response.
+        """
+        if not self.llm:
+            yield "I apologize, but the AI service is not configured. Please add your API key in the settings."
+            return
+
+        # Retrieve context from vector store if RAG is enabled
+        retrieved_context = ""
+        sources = []
+        
+        if use_rag and self.vector_store and self.user_id:
+            try:
+                retrieved_chunks = await self._retrieve_context(
+                    query=message,
+                    top_k=getattr(settings, 'retrieval_top_k', 5),
+                    filters=document_filters
+                )
+                
+                if retrieved_chunks:
+                    # Build context from retrieved chunks
+                    context_parts = []
+                    for chunk in retrieved_chunks:
+                        context_parts.append(f"[From {chunk['metadata'].get('title', 'document')}]\n{chunk['text']}")
+                    
+                    retrieved_context = "\n\n".join(context_parts)
+                    sources = self._format_sources(retrieved_chunks)
+                    
+                    # Yield sources first as a special event if needed, or just let the client handle it
+                    # For simplicity, we can yield a JSON string with sources at the beginning or end
+                    # But for now, let's just stream the text and we'll handle sources via a separate mechanism or structured chunk
+                    
+            except Exception as e:
+                print(f"Error retrieving context: {e}")
+        
+        # Combine retrieved context with provided context
+        full_context = retrieved_context if retrieved_context else context
+        if not full_context:
+            full_context = "No specific documents loaded."
+        
+        # Build conversation
+        system_prompt = CHAT_SYSTEM_PROMPT.format(context=full_context[:5000])
+        
+        messages = [{"role": "system", "content": system_prompt}]
+        
+        if history:
+            for msg in history[-10:]:  # Keep last 10 messages
+                messages.append({"role": msg.role, "content": msg.content})
+        
+        messages.append({"role": "user", "content": message})
+        
+        try:
+            from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+            
+            lc_messages = []
+            for msg in messages:
+                if msg["role"] == "system":
+                    lc_messages.append(SystemMessage(content=msg["content"]))
+                elif msg["role"] == "user":
+                    lc_messages.append(HumanMessage(content=msg["content"]))
+                else:
+                    lc_messages.append(AIMessage(content=msg["content"]))
+            
+            # Yield sources information first
+            if sources:
+                yield json.dumps({"type": "sources", "data": sources}) + "\n"
+            
+            # Stream the response
+            async for chunk in self.llm.astream(lc_messages):
+                if chunk.content:
+                    yield json.dumps({"type": "token", "content": chunk.content}) + "\n"
+                    
+            # We could also yield suggested actions at the end if needed
+            
+        except Exception as e:
+            yield json.dumps({"type": "error", "content": f"I encountered an error: {str(e)}. Please try again."}) + "\n"
     
     async def explain_concept(
         self,

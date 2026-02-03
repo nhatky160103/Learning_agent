@@ -82,6 +82,18 @@ export const documentsApi = {
         const response = await api.delete(`/documents/${id}`);
         return response.data;
     },
+    search: async (query: string, top_k: number = 5) => {
+        const response = await api.post('/documents/search', null, {
+            params: { query, top_k }
+        });
+        return response.data;
+    },
+    searchInDocument: async (id: string, query: string, top_k: number = 5) => {
+        const response = await api.post(`/documents/${id}/search`, null, {
+            params: { query, top_k }
+        });
+        return response.data;
+    },
 };
 
 // Flashcards API
@@ -219,6 +231,7 @@ export const chatApi = {
         const response = await api.post('/chat/message', data);
         return response.data;
     },
+    getStreamUrl: () => `${API_BASE_URL}/chat/stream`,
     explainConcept: async (data: { concept: string; level?: string; document_id?: string }) => {
         const response = await api.post('/chat/explain', data);
         return response.data;

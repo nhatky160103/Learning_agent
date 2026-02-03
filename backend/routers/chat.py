@@ -114,3 +114,41 @@ async def summarize_text(
     summary = await orchestrator.summarize(text)
     
     return {"summary": summary}
+
+
+from fastapi.responses import StreamingResponse
+
+@router.post("/stream")
+async def chat_stream(
+    request: ChatRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Stream chat response with RAG support."""
+    context = ""
+    document_filters = None
+    
+    # Get document context if provided
+    if request.document_id:
+        result = await db.execute(
+            select(Document)
+            .where(Document.id == request.document_id, Document.user_id == current_user.id)
+        )
+        document = result.scalar_one_or_none()
+        if document:
+            document_filters = {"document_id": str(request.document_id)}
+            if document.content_text:
+                context = document.content_text[:10000]
+    
+    orchestrator = AIAgentOrchestrator(user_id=str(current_user.id))
+    
+    return StreamingResponse(
+        orchestrator.chat_stream(
+            message=request.message,
+            context=context,
+            history=request.conversation_history,
+            use_rag=True,
+            document_filters=document_filters
+        ),
+        media_type="text/event-stream"
+    )

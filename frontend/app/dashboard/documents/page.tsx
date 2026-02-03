@@ -10,6 +10,8 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { documentsApi, flashcardsApi } from '@/lib/api';
+import SearchResults from '@/components/SearchResults';
+import SearchModal from '@/components/SearchModal';
 
 interface Document {
     id: string;
@@ -27,12 +29,52 @@ export default function DocumentsPage() {
     const [loading, setLoading] = useState(true);
     const [uploading, setUploading] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
-    const [selectedDoc, setSelectedDoc] = useState<Document | null>(null);
+    const [isDeepSearch, setIsDeepSearch] = useState(false);
+    const [searchResults, setSearchResults] = useState<any[]>([]);
+    const [isSearching, setIsSearching] = useState(false);
     const [generatingFlashcards, setGeneratingFlashcards] = useState<string | null>(null);
+    const [searchModalDoc, setSearchModalDoc] = useState<Document | null>(null);
 
     useEffect(() => {
         loadDocuments();
     }, []);
+
+    // Poll for document status updates
+    useEffect(() => {
+        const hasProcessingDocs = documents.some(doc => doc.status === 'processing' || doc.status === 'uploading');
+
+        if (!hasProcessingDocs) return;
+
+        const interval = setInterval(() => {
+            loadDocuments();
+        }, 5000);
+
+        return () => clearInterval(interval);
+    }, [documents]);
+
+    // Debounce search
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            if (isDeepSearch && searchQuery.length > 2) {
+                performDeepSearch();
+            }
+        }, 800);
+
+        return () => clearTimeout(timer);
+    }, [searchQuery, isDeepSearch]);
+
+    const performDeepSearch = async () => {
+        setIsSearching(true);
+        try {
+            const data = await documentsApi.search(searchQuery);
+            setSearchResults(data.results || []);
+        } catch (error) {
+            console.error('Search failed:', error);
+            toast.error('Search failed');
+        } finally {
+            setIsSearching(false);
+        }
+    };
 
     const loadDocuments = async () => {
         try {
@@ -117,10 +159,12 @@ export default function DocumentsPage() {
     const getStatusIcon = (status: string) => {
         switch (status) {
             case 'processed':
+            case 'ready': // Added 'ready' based on backend response
                 return <CheckCircle className="w-4 h-4 text-green-400" />;
             case 'processing':
                 return <Loader2 className="w-4 h-4 text-yellow-400 animate-spin" />;
             case 'failed':
+            case 'error':
                 return <AlertCircle className="w-4 h-4 text-red-400" />;
             default:
                 return <Clock className="w-4 h-4 text-gray-400" />;
@@ -128,6 +172,7 @@ export default function DocumentsPage() {
     };
 
     const getFileIcon = (type: string) => {
+        if (!type) return '📁';
         if (type.includes('pdf')) return '📄';
         if (type.includes('word') || type.includes('doc')) return '📝';
         if (type.includes('presentation') || type.includes('ppt')) return '📊';
@@ -144,117 +189,180 @@ export default function DocumentsPage() {
                     <p className="text-gray-400 mt-1">Upload and manage your study materials</p>
                 </div>
 
-                <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
-                    <input
-                        type="text"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="Search documents..."
-                        className="pl-10 pr-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-primary-500 w-full md:w-64"
-                    />
+                <div className="flex items-center gap-4">
+                    {/* Deep Search Toggle */}
+                    <div className="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-lg border border-white/10">
+                        <span className={`text-sm ${isDeepSearch ? 'text-primary-400 font-medium' : 'text-gray-400'}`}>
+                            Deep Search
+                        </span>
+                        <button
+                            onClick={() => setIsDeepSearch(!isDeepSearch)}
+                            className={`w-10 h-6 rounded-full flex items-center transition-colors p-1 ${isDeepSearch ? 'bg-primary-500' : 'bg-gray-600'
+                                }`}
+                        >
+                            <motion.div
+                                layout
+                                className="bg-white w-4 h-4 rounded-full shadow-lg"
+                                animate={{ x: isDeepSearch ? 16 : 0 }}
+                            />
+                        </button>
+                    </div>
+
+                    <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
+                        <input
+                            type="text"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            placeholder={isDeepSearch ? "Search by concept..." : "Filter by name..."}
+                            className={`pl-10 pr-4 py-2.5 bg-white/5 border rounded-xl text-white placeholder-gray-500 focus:outline-none w-full md:w-64 transition-all ${isDeepSearch
+                                ? 'border-primary-500/50 shadow-[0_0_15px_rgba(59,130,246,0.3)]'
+                                : 'border-white/10 focus:border-primary-500'
+                                }`}
+                        />
+                    </div>
                 </div>
             </div>
 
-            {/* Upload Zone */}
-            <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                {...getRootProps()}
-                className={`glass rounded-2xl p-8 border-2 border-dashed transition-colors cursor-pointer ${isDragActive ? 'border-primary-500 bg-primary-500/10' : 'border-white/20 hover:border-white/40'
-                    }`}
-            >
-                <input {...getInputProps()} />
-                <div className="text-center">
-                    {uploading ? (
-                        <Loader2 className="w-12 h-12 text-primary-400 mx-auto mb-4 animate-spin" />
-                    ) : (
-                        <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                    )}
-                    <p className="text-white text-lg font-medium mb-2">
-                        {isDragActive ? 'Drop files here...' : 'Drag & drop files here'}
-                    </p>
-                    <p className="text-gray-400 text-sm">
-                        or click to browse • Supports PDF, DOCX, TXT, MD, PPTX
-                    </p>
-                </div>
-            </motion.div>
-
-            {/* Documents List */}
-            {loading ? (
-                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {[...Array(6)].map((_, i) => (
-                        <div key={i} className="h-48 skeleton rounded-2xl" />
-                    ))}
-                </div>
-            ) : filteredDocs.length === 0 ? (
-                <div className="text-center py-12">
-                    <FileText className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-                    <h3 className="text-xl font-semibold text-white mb-2">No documents yet</h3>
-                    <p className="text-gray-400">Upload your first document to get started</p>
+            {isDeepSearch && searchQuery ? (
+                <div className="mt-6">
+                    <SearchResults
+                        results={searchResults}
+                        loading={isSearching}
+                        query={searchQuery}
+                        onResultClick={(result) => {
+                            // Find full document object to pass to modal
+                            const doc = documents.find(d => d.id === result.metadata.document_id);
+                            if (doc) {
+                                setSearchModalDoc(doc);
+                            }
+                        }}
+                    />
                 </div>
             ) : (
-                <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="grid md:grid-cols-2 lg:grid-cols-3 gap-4"
-                >
-                    <AnimatePresence>
-                        {filteredDocs.map((doc) => (
-                            <motion.div
-                                key={doc.id}
-                                initial={{ opacity: 0, scale: 0.9 }}
-                                animate={{ opacity: 1, scale: 1 }}
-                                exit={{ opacity: 0, scale: 0.9 }}
-                                className="glass rounded-2xl p-6 hover-lift group"
-                            >
-                                <div className="flex items-start justify-between mb-4">
-                                    <span className="text-4xl">{getFileIcon(doc.file_type)}</span>
-                                    <div className="flex items-center gap-1">
-                                        {getStatusIcon(doc.status)}
-                                        <span className="text-xs text-gray-400 capitalize">{doc.status}</span>
-                                    </div>
-                                </div>
-
-                                <h3 className="text-white font-semibold mb-2 truncate" title={doc.original_filename}>
-                                    {doc.original_filename}
-                                </h3>
-
-                                <p className="text-gray-400 text-sm mb-4 line-clamp-2">
-                                    {doc.summary || 'Processing...'}
+                <>
+                    {/* Upload Zone */}
+                    {/* Upload Zone */}
+                    <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                    >
+                        <div
+                            {...getRootProps()}
+                            className={`glass rounded-2xl p-8 border-2 border-dashed transition-colors cursor-pointer ${isDragActive ? 'border-primary-500 bg-primary-500/10' : 'border-white/20 hover:border-white/40'
+                                }`}
+                        >
+                            <input {...getInputProps()} />
+                            <div className="text-center">
+                                {uploading ? (
+                                    <Loader2 className="w-12 h-12 text-primary-400 mx-auto mb-4 animate-spin" />
+                                ) : (
+                                    <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                                )}
+                                <p className="text-white text-lg font-medium mb-2">
+                                    {isDragActive ? 'Drop files here...' : 'Drag & drop files here'}
                                 </p>
+                                <p className="text-gray-400 text-sm">
+                                    or click to browse • Supports PDF, DOCX, TXT, MD, PPTX
+                                </p>
+                            </div>
+                        </div>
+                    </motion.div>
 
-                                <div className="flex items-center justify-between text-sm text-gray-500">
-                                    <span>{formatFileSize(doc.file_size)}</span>
-                                    <span>{new Date(doc.created_at).toLocaleDateString()}</span>
-                                </div>
+                    {/* Documents List */}
+                    {loading ? (
+                        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {[...Array(6)].map((_, i) => (
+                                <div key={i} className="h-48 skeleton rounded-2xl" />
+                            ))}
+                        </div>
+                    ) : filteredDocs.length === 0 ? (
+                        <div className="text-center py-12">
+                            <FileText className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+                            <h3 className="text-xl font-semibold text-white mb-2">No documents yet</h3>
+                            <p className="text-gray-400">Upload your first document to get started</p>
+                        </div>
+                    ) : (
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            className="grid md:grid-cols-2 lg:grid-cols-3 gap-4"
+                        >
+                            <AnimatePresence>
+                                {filteredDocs.map((doc) => (
+                                    <motion.div
+                                        key={doc.id}
+                                        initial={{ opacity: 0, scale: 0.9 }}
+                                        animate={{ opacity: 1, scale: 1 }}
+                                        exit={{ opacity: 0, scale: 0.9 }}
+                                        className="glass rounded-2xl p-6 hover-lift group"
+                                    >
+                                        <div className="flex items-start justify-between mb-4">
+                                            <span className="text-4xl">{getFileIcon(doc.file_type)}</span>
+                                            <div className="flex items-center gap-1">
+                                                {getStatusIcon(doc.status)}
+                                                <span className="text-xs text-gray-400 capitalize">{doc.status}</span>
+                                            </div>
+                                        </div>
 
-                                {/* Actions */}
-                                <div className="mt-4 pt-4 border-t border-white/10 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button
-                                        onClick={() => handleGenerateFlashcards(doc)}
-                                        disabled={(doc.status !== 'ready' && doc.status !== 'processed') || generatingFlashcards === doc.id}
-                                        className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-primary-500/20 text-primary-400 hover:bg-primary-500/30 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
-                                    >
-                                        {generatingFlashcards === doc.id ? (
-                                            <Loader2 className="w-4 h-4 animate-spin" />
-                                        ) : (
-                                            <Layers className="w-4 h-4" />
-                                        )}
-                                        Generate Cards
-                                    </button>
-                                    <button
-                                        onClick={() => handleDelete(doc.id)}
-                                        className="p-2 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30"
-                                    >
-                                        <Trash2 className="w-4 h-4" />
-                                    </button>
-                                </div>
-                            </motion.div>
-                        ))}
-                    </AnimatePresence>
-                </motion.div>
+                                        <h3 className="text-white font-semibold mb-2 truncate" title={doc.original_filename}>
+                                            {doc.original_filename}
+                                        </h3>
+
+                                        <p className="text-gray-400 text-sm mb-4 line-clamp-2">
+                                            {doc.summary || 'Processing...'}
+                                        </p>
+
+                                        <div className="flex items-center justify-between text-sm text-gray-500">
+                                            <span>{formatFileSize(doc.file_size)}</span>
+                                            <span>{new Date(doc.created_at).toLocaleDateString()}</span>
+                                        </div>
+
+                                        {/* Actions */}
+                                        <div className="mt-4 pt-4 border-t border-white/10 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <button
+                                                onClick={() => handleGenerateFlashcards(doc)}
+                                                disabled={(doc.status !== 'ready' && doc.status !== 'processed') || generatingFlashcards === doc.id}
+                                                className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-primary-500/20 text-primary-400 hover:bg-primary-500/30 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+                                            >
+                                                {generatingFlashcards === doc.id ? (
+                                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                                ) : (
+                                                    <Layers className="w-4 h-4" />
+                                                )}
+                                                Generate Cards
+                                            </button>
+                                            <button
+                                                onClick={() => setSearchModalDoc(doc)}
+                                                disabled={doc.status !== 'ready' && doc.status !== 'processed'}
+                                                className="p-2 rounded-lg bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                title="Search in Document"
+                                            >
+                                                <Search className="w-4 h-4" />
+                                            </button>
+                                            <button
+                                                onClick={() => handleDelete(doc.id)}
+                                                className="p-2 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                    </motion.div>
+                                ))}
+                            </AnimatePresence>
+                        </motion.div>
+                    )}
+                </>
             )}
+
+            {/* Search Modal */}
+            <SearchModal
+                isOpen={!!searchModalDoc}
+                onClose={() => setSearchModalDoc(null)}
+                documentId={searchModalDoc?.id || ''}
+                filename={searchModalDoc?.original_filename || ''}
+                initialQuery={searchQuery}
+            />
         </div>
     );
 }

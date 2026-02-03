@@ -223,8 +223,10 @@ class VectorStore:
                     result = {
                         "chunk_id": results['ids'][0][i],
                         "text": results['documents'][0][i],
+                        "content": results['documents'][0][i], # Alias for frontend
                         "metadata": results['metadatas'][0][i],
                         "similarity_score": round(similarity_score, 4),
+                        "score": round(similarity_score, 4), # Alias for frontend
                         "distance": round(distance, 4)
                     }
                     formatted_results.append(result)
