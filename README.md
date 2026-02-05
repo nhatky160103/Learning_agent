@@ -18,22 +18,20 @@ AI-powered personalized learning assistant with multi-agent orchestration, RAG-e
 *Context-aware conversation powered by Retrieval-Augmented Generation*
 
 ### Document Search with RAG
-````carousel
+
 ![Single Document Search](asset/rag_internal_file.png)
 *Semantic search within a specific document with relevance scoring*
-<!-- slide -->
+
 ![Multi-Document Search](asset/rag_multi_file.png)
 *Search across all uploaded documents with AI-powered context retrieval*
-````
 
 ### Quiz Generation & Taking
-````carousel
+
 ![Generate Quiz](asset/gen_quiz.png)
 *Create customized quizzes from documents or flashcard decks*
-<!-- slide -->
+
 ![Taking Quiz](asset/gen_quiz2.png)
 *Interactive quiz interface with multiple question types*
-````
 
 ## ✨ Features
 
