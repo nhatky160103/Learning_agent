@@ -173,7 +173,75 @@ learning_assistant/
 │   │   └── store.ts         # Zustand stores
 │   └── components/          # Shared components
 │
-└── docker-compose.yml       # PostgreSQL, Redis, ChromaDB
+└── docker-compose.yml       # Development stack
+└── docker-compose.prod.yml  # Production stack
+└── .github/workflows/       # CI/CD pipelines
+
+## 🐳 Docker Setup
+
+### Development with Docker
+
+Run the entire stack with hot-reload support:
+
+```bash
+# Start all services (PostgreSQL, Redis, ChromaDB, Backend, Frontend)
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop all services
+docker-compose down
+
+# Rebuild after code changes
+docker-compose up -d --build
+```
+
+**Services:**
+- Frontend: http://localhost:3000
+- Backend API: http://localhost:8001
+- PostgreSQL: localhost:5432
+- Redis: localhost:6379
+- ChromaDB: http://localhost:8000
+
+### Production Deployment
+
+1. **Create production environment file:**
+```bash
+cp .env.example .env
+# Edit .env with your production values
+```
+
+2. **Build and run production stack:**
+```bash
+docker-compose -f docker-compose.prod.yml up -d --build
+```
+
+3. **Run database migrations:**
+```bash
+docker-compose -f docker-compose.prod.yml exec backend alembic upgrade head
+```
+
+### Docker Commands Reference
+
+```bash
+# View running containers
+docker-compose ps
+
+# Access backend shell
+docker-compose exec backend bash
+
+# Access database
+docker-compose exec postgres psql -U learning_user -d learning_assistant
+
+# View logs for specific service
+docker-compose logs -f backend
+
+# Rebuild specific service
+docker-compose up -d --build backend
+
+# Clean up
+docker-compose down -v  # Warning: removes volumes
 ```
 
 ## 🔧 Environment Variables
@@ -265,6 +333,39 @@ CORS_ORIGINS=http://localhost:3000
 6. **Review with Spaced Repetition** - Practice with SM-2 optimized scheduling
 7. **Take Adaptive Quizzes** - Test knowledge with AI-generated quizzes
 8. **Track Progress** - View analytics, streaks, and study recommendations
+
+## 🚀 CI/CD Pipeline
+
+### GitHub Actions Workflow
+
+The project includes automated CI/CD pipeline:
+
+**On Push/PR:**
+1. **Test Backend** - Run pytest
+2. **Test Frontend** - Run linter and build
+
+**On Push to Main:**
+3. **Build Docker Images** - Multi-stage builds for backend and frontend
+4. **Push to Docker Hub** - Tagged with commit SHA and `latest`
+
+### Setup CI/CD
+
+1. **Add GitHub Secrets:**
+   - `DOCKER_USERNAME` - Your Docker Hub username
+   - `DOCKER_PASSWORD` - Your Docker Hub password/token
+
+2. **Optional: Configure Deployment**
+   Uncomment the deploy job in `.github/workflows/ci-cd.yml` and add:
+   - `DEPLOY_HOST` - Server IP/domain
+   - `DEPLOY_USER` - SSH username
+   - `DEPLOY_SSH_KEY` - SSH private key
+
+### Manual Workflow Trigger
+
+```bash
+# Trigger workflow manually via GitHub UI
+# Actions tab → CI/CD Pipeline → Run workflow
+```
 
 ## 📄 License
 

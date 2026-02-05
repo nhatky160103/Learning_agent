@@ -3,41 +3,43 @@ version: '3.8'
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: learning_assistant_db
+    container_name: learning_assistant_db_prod
     environment:
-      POSTGRES_USER: learning_user
-      POSTGRES_PASSWORD: learning_pass
-      POSTGRES_DB: learning_assistant
+      POSTGRES_USER: ${POSTGRES_USER:-learning_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-learning_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-learning_assistant}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U learning_user -d learning_assistant"]
-      interval: 5s
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-learning_user} -d ${POSTGRES_DB:-learning_assistant}"]
+      interval: 10s
       timeout: 5s
       retries: 5
     networks:
       - learning_network
+    restart: unless-stopped
 
   redis:
     image: redis:7-alpine
-    container_name: learning_assistant_redis
+    container_name: learning_assistant_redis_prod
     ports:
       - "6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
+      interval: 10s
       timeout: 5s
       retries: 5
     networks:
       - learning_network
+    restart: unless-stopped
 
   chromadb:
     image: chromadb/chroma:latest
-    container_name: learning_assistant_chroma
+    container_name: learning_assistant_chroma_prod
     ports:
       - "8000:8000"
     volumes:
@@ -47,28 +49,28 @@ services:
       - ANONYMIZED_TELEMETRY=FALSE
     networks:
       - learning_network
+    restart: unless-stopped
 
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: learning_assistant_backend
+    image: learning-assistant-backend:latest
+    container_name: learning_assistant_backend_prod
     ports:
       - "8001:8001"
-    volumes:
-      # Mount code for hot-reload in development
-      - ./backend:/app
-      - /app/__pycache__
     environment:
-      - DATABASE_URL=postgresql+asyncpg://learning_user:learning_pass@postgres:5432/learning_assistant
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-learning_user}:${POSTGRES_PASSWORD:-learning_pass}@postgres:5432/${POSTGRES_DB:-learning_assistant}
       - REDIS_URL=redis://redis:6379
       - CHROMA_HOST=chromadb
       - CHROMA_PORT=8000
       - CHROMA_COLLECTION=learning_documents
-      - JWT_SECRET_KEY=dev-secret-key-change-in-production
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       - JWT_ALGORITHM=HS256
       - ACCESS_TOKEN_EXPIRE_MINUTES=30
-      - CORS_ORIGINS=http://localhost:3000
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
     depends_on:
       postgres:
         condition: service_healthy
@@ -78,29 +80,40 @@ services:
         condition: service_started
     networks:
       - learning_network
-    command: uvicorn main:app --host 0.0.0.0 --port 8001 --reload
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-      target: deps  # Use deps stage for development
-    container_name: learning_assistant_frontend
+    image: learning-assistant-frontend:latest
+    container_name: learning_assistant_frontend_prod
     ports:
       - "3000:3000"
-    volumes:
-      # Mount code for hot-reload in development
-      - ./frontend:/app
-      - /app/node_modules
-      - /app/.next
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8001
-      - NODE_ENV=development
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8001}
+      - NODE_ENV=production
     depends_on:
       - backend
     networks:
       - learning_network
-    command: npm run dev
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
 
 volumes:
   postgres_data:
