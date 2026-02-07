@@ -20,21 +20,6 @@ services:
     networks:
       - learning_network
 
-  redis:
-    image: redis:7-alpine
-    container_name: learning_assistant_redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    networks:
-      - learning_network
-
   chromadb:
     image: chromadb/chroma:latest
     container_name: learning_assistant_chroma
@@ -61,7 +46,6 @@ services:
       - /app/__pycache__
     environment:
       - DATABASE_URL=postgresql+asyncpg://learning_user:learning_pass@postgres:5432/learning_assistant
-      - REDIS_URL=redis://redis:6379
       - CHROMA_HOST=chromadb
       - CHROMA_PORT=8000
       - CHROMA_COLLECTION=learning_documents
@@ -71,8 +55,6 @@ services:
       - CORS_ORIGINS=http://localhost:3000
     depends_on:
       postgres:
-        condition: service_healthy
-      redis:
         condition: service_healthy
       chromadb:
         condition: service_started
@@ -104,7 +86,6 @@ services:
 
 volumes:
   postgres_data:
-  redis_data:
   chroma_data:
 
 networks:

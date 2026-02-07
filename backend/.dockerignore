@@ -1,3 +1,26 @@
+# ============================================
+# CRITICAL: Exclude heavy directories first
+# ============================================
+# Virtual environment (VERY HEAVY - can be 5-8GB!)
+.venv/
+venv/
+env/
+ENV/
+
+# Model caches (sentence-transformers, huggingface)
+.cache/
+models/
+*.pth
+*.bin
+*.onnx
+
+# Data and uploads
+uploads/
+data/
+*.db
+*.sqlite
+*.sqlite3
+
 # Python
 __pycache__/
 *.py[cod]
@@ -42,3 +65,6 @@ Thumbs.db
 
 # Alembic
 alembic/versions/*.pyc
+
+# Development requirements
+requirements-dev.txt
