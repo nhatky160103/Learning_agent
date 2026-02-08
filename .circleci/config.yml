@@ -43,8 +43,8 @@ jobs:
       - setup_remote_docker
       - checkout
       - docker/check:
-          docker-username: DOCKER_LOGIN
-          docker-password: DOCKER_PASSWORD
+          docker_username: DOCKER_LOGIN
+          docker_password: DOCKER_PASSWORD
       - run:
           name: Build Backend Image
           command: |
@@ -60,8 +60,8 @@ jobs:
       - setup_remote_docker
       - checkout
       - docker/check:
-          docker-username: DOCKER_LOGIN
-          docker-password: DOCKER_PASSWORD
+          docker_username: DOCKER_LOGIN
+          docker_password: DOCKER_PASSWORD
       - run:
           name: Build Frontend Image
           command: |
