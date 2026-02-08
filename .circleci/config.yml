@@ -1,0 +1,88 @@
+# Use the latest 2.1 version of CircleCI pipeline process engine.
+version: 2.1
+
+orbs:
+  node: circleci/node@5.1.0
+  python: circleci/python@2.1.1
+  docker: circleci/docker@3.0.1
+
+jobs:
+  test-frontend:
+    executor:
+      name: node/default
+    steps:
+      - checkout
+      - node/install-packages:
+          pkg-manager: npm
+          app-dir: frontend
+      - run:
+          name: Run Linting
+          command: npm run lint
+          working_directory: frontend
+
+  test-backend:
+    executor:
+      name: python/default
+      tag: "3.11"
+    steps:
+      - checkout
+      - python/install-packages:
+          pkg-manager: pip
+          app-dir: backend
+          pip-dependency-file: requirements.txt
+      - run:
+          name: Run Tests
+          command: |
+            cd backend
+            pip install -r requirements-dev.txt
+            pytest
+  
+  build-and-push-backend:
+    executor: docker/docker
+    steps:
+      - setup_remote_docker
+      - checkout
+      - docker/check:
+          docker_username: DOCKER_LOGIN
+          docker_password: DOCKER_PASSWORD
+      - docker/build:
+          image: $DOCKER_USER/learning-assistant-backend
+          tag: latest
+          path: backend
+      - docker/push:
+          image: $DOCKER_USER/learning-assistant-backend
+          tag: latest
+
+  build-and-push-frontend:
+    executor: docker/docker
+    steps:
+      - setup_remote_docker
+      - checkout
+      - docker/check:
+          docker_username: DOCKER_LOGIN
+          docker_password: DOCKER_PASSWORD
+      - docker/build:
+          image: $DOCKER_USER/learning-assistant-frontend
+          tag: latest
+          path: frontend
+      - docker/push:
+          image: $DOCKER_USER/learning-assistant-frontend
+          tag: latest
+
+workflows:
+  build-test-deploy:
+    jobs:
+      - test-frontend
+      - test-backend
+      - build-and-push-backend:
+          requires:
+            - test-backend
+          filters:
+            branches:
+              only: main
+      - build-and-push-frontend:
+          requires:
+            - test-frontend
+          filters:
+            branches:
+              only: main
