@@ -48,6 +48,7 @@ jobs:
       - docker/build:
           image: $DOCKER_LOGIN/learning-assistant-backend
           tag: latest
+          dockerfile: Dockerfile
           path: backend
       - docker/push:
           image: $DOCKER_LOGIN/learning-assistant-backend
@@ -64,6 +65,7 @@ jobs:
       - docker/build:
           image: $DOCKER_LOGIN/learning-assistant-frontend
           tag: latest
+          dockerfile: Dockerfile
           path: frontend
       - docker/push:
           image: $DOCKER_LOGIN/learning-assistant-frontend
