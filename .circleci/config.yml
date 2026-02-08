@@ -43,8 +43,8 @@ jobs:
       - setup_remote_docker
       - checkout
       - docker/check:
-          docker-username: DOCKER_LOGIN
-          docker-password: DOCKER_PASSWORD
+          docker_username: DOCKER_LOGIN
+          docker_password: DOCKER_PASSWORD
       - docker/build:
           image: $DOCKER_USER/learning-assistant-backend
           tag: latest
@@ -59,8 +59,8 @@ jobs:
       - setup_remote_docker
       - checkout
       - docker/check:
-          docker-username: DOCKER_LOGIN
-          docker-password: DOCKER_PASSWORD
+          docker_username: DOCKER_LOGIN
+          docker_password: DOCKER_PASSWORD
       - docker/build:
           image: $DOCKER_USER/learning-assistant-frontend
           tag: latest
