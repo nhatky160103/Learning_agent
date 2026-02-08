@@ -46,11 +46,11 @@ jobs:
           docker_username: DOCKER_LOGIN
           docker_password: DOCKER_PASSWORD
       - docker/build:
-          image: $DOCKER_USER/learning-assistant-backend
+          image: $DOCKER_LOGIN/learning-assistant-backend
           tag: latest
           path: backend
       - docker/push:
-          image: $DOCKER_USER/learning-assistant-backend
+          image: $DOCKER_LOGIN/learning-assistant-backend
           tag: latest
 
   build-and-push-frontend:
@@ -62,11 +62,11 @@ jobs:
           docker_username: DOCKER_LOGIN
           docker_password: DOCKER_PASSWORD
       - docker/build:
-          image: $DOCKER_USER/learning-assistant-frontend
+          image: $DOCKER_LOGIN/learning-assistant-frontend
           tag: latest
           path: frontend
       - docker/push:
-          image: $DOCKER_USER/learning-assistant-frontend
+          image: $DOCKER_LOGIN/learning-assistant-frontend
           tag: latest
 
 workflows:
