@@ -70,7 +70,7 @@ services:
       - ACCESS_TOKEN_EXPIRE_MINUTES=30
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
-      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
+      - CORS_ORIGINS=${CORS_ORIGINS:-["http://localhost:3000"]}
     depends_on:
       postgres:
         condition: service_healthy
@@ -99,7 +99,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8001}
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8001/api}
       - NODE_ENV=production
     depends_on:
       - backend
