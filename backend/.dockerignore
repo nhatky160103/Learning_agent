@@ -1,0 +1,70 @@
+# ============================================
+# CRITICAL: Exclude heavy directories first
+# ============================================
+# Virtual environment (VERY HEAVY - can be 5-8GB!)
+.venv/
+venv/
+env/
+ENV/
+
+# Model caches (sentence-transformers, huggingface)
+.cache/
+models/
+*.pth
+*.bin
+*.onnx
+
+# Data and uploads
+uploads/
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Database
+*.db
+*.sqlite3
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Alembic
+alembic/versions/*.pyc
+
+# Development requirements
+requirements-dev.txt

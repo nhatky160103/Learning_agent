@@ -1,30 +1,80 @@
 # 🧠 Smart Learning Companion
 
-AI-powered personalized learning assistant with intelligent flashcards, adaptive quizzes, and progress tracking.
+AI-powered personalized learning assistant with multi-agent orchestration, RAG-enabled chat, intelligent flashcards, and adaptive quizzes.
 
 ![Next.js](https://img.shields.io/badge/Next.js-14-black?style=flat-square&logo=next.js)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.109-009688?style=flat-square&logo=fastapi)
 ![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.3-3178C6?style=flat-square&logo=typescript)
 
+## 📸 Features in Action
+
+### Dashboard Overview
+![Dashboard](asset/dashboard.png)
+*Track progress with XP, streaks, and quick actions for learning*
+
+### AI Chat Assistant with RAG
+![AI Chat](asset/chat1.png)
+*Context-aware conversation powered by Retrieval-Augmented Generation*
+
+### Document Search with RAG
+
+![Single Document Search](asset/rag_internal_file.png)
+*Semantic search within a specific document with relevance scoring*
+
+![Multi-Document Search](asset/rag_multi_file.png)
+*Search across all uploaded documents with AI-powered context retrieval*
+
+### Quiz Generation & Taking
+
+![Generate Quiz](asset/gen_quiz.png)
+*Create customized quizzes from documents or flashcard decks*
+
+![Taking Quiz](asset/gen_quiz2.png)
+*Interactive quiz interface with multiple question types*
+
 ## ✨ Features
 
 - **📄 Smart Document Processing** - Upload PDFs, DOCX, TXT, PPTX with automatic text extraction and summarization
+- **🤖 Multi-Agent AI System** - Specialized agents (Chat, Explanation, Summary, Concept Extractor) working together
+- **🔍 RAG-Powered Chat** - Retrieval-Augmented Generation with semantic search across your documents
+- **⚡ Real-time Streaming** - Stream AI responses for instant feedback
 - **🎴 AI Flashcard Generation** - Auto-generate flashcards from documents using LLM
 - **🔄 Spaced Repetition** - SM-2 algorithm optimizes your review schedule for maximum retention
 - **📝 Adaptive Quizzes** - Multiple question types (MCQ, True/False, Fill-in-blank) with difficulty adjustment
-- **💬 AI Chat Assistant** - Ask questions, get explanations, and master concepts
+- **🔎 Semantic Document Search** - Find relevant information across all your study materials
 - **📊 Progress Analytics** - Track streaks, XP, topic mastery, and study heatmap
 - **🌙 Modern UI** - Glassmorphism design with smooth animations
+
+## 🤖 AI Features
+
+### Multi-Agent Orchestration
+Specialized AI agents coordinate to provide personalized learning experiences:
+- **Chat Agent** - Conversational learning assistant
+- **Explanation Agent** - Deep concept explanations at various levels (ELI5, intermediate, advanced)
+- **Summary Agent** - Document summarization
+- **Concept Extractor** - Identify key topics and terms
+
+### RAG (Retrieval-Augmented Generation)
+- **Vector Store** - ChromaDB with SentenceTransformer embeddings
+- **Semantic Search** - Find relevant content across all documents
+- **Context-Aware Responses** - AI answers grounded in your study materials
+- **Source Citations** - Track which documents informed each response
+
+### Streaming & Real-time
+- **Streaming Responses** - See AI answers as they're generated
+- **Async Processing** - Non-blocking document upload and processing
 
 ## 🏗️ Tech Stack
 
 ### Backend
 - **FastAPI** - High-performance async API
-- **PostgreSQL** - Relational database
+- **PostgreSQL** - Relational database with async SQLAlchemy
 - **Redis** - Caching & session management
-- **ChromaDB** - Vector storage for embeddings
-- **LangChain** - LLM orchestration (OpenAI/Gemini)
+- **ChromaDB** - Vector database for semantic search
+- **LangChain** - LLM orchestration framework
+- **SentenceTransformers** - Generate document embeddings (all-MiniLM-L6-v2)
+- **LLM Support** - OpenAI (GPT-4o-mini) / Google (Gemini-2.5-flash)
 
 ### Frontend
 - **Next.js 14** - React framework with App Router
@@ -123,7 +173,75 @@ learning_assistant/
 │   │   └── store.ts         # Zustand stores
 │   └── components/          # Shared components
 │
-└── docker-compose.yml       # PostgreSQL, Redis, ChromaDB
+└── docker-compose.yml       # Development stack
+└── docker-compose.prod.yml  # Production stack
+└── .github/workflows/       # CI/CD pipelines
+
+## 🐳 Docker Setup
+
+### Development with Docker
+
+Run the entire stack with hot-reload support:
+
+```bash
+# Start all services (PostgreSQL, Redis, ChromaDB, Backend, Frontend)
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop all services
+docker-compose down
+
+# Rebuild after code changes
+docker-compose up -d --build
+```
+
+**Services:**
+- Frontend: http://localhost:3000
+- Backend API: http://localhost:8001
+- PostgreSQL: localhost:5432
+- Redis: localhost:6379
+- ChromaDB: http://localhost:8000
+
+### Production Deployment
+
+1. **Create production environment file:**
+```bash
+cp .env.example .env
+# Edit .env with your production values
+```
+
+2. **Build and run production stack:**
+```bash
+docker-compose -f docker-compose.prod.yml up -d --build
+```
+
+3. **Run database migrations:**
+```bash
+docker-compose -f docker-compose.prod.yml exec backend alembic upgrade head
+```
+
+### Docker Commands Reference
+
+```bash
+# View running containers
+docker-compose ps
+
+# Access backend shell
+docker-compose exec backend bash
+
+# Access database
+docker-compose exec postgres psql -U learning_user -d learning_assistant
+
+# View logs for specific service
+docker-compose logs -f backend
+
+# Rebuild specific service
+docker-compose up -d --build backend
+
+# Clean up
+docker-compose down -v  # Warning: removes volumes
 ```
 
 ## 🔧 Environment Variables
@@ -137,8 +255,15 @@ DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/learning_db
 # Redis
 REDIS_URL=redis://localhost:6379
 
+# ChromaDB (Vector Store)
+CHROMA_HOST=localhost
+CHROMA_PORT=8000
+CHROMA_COLLECTION=learning_documents
+
 # JWT
 JWT_SECRET_KEY=your-super-secret-key
+JWT_ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=30
 
 # AI (choose one or both)
 OPENAI_API_KEY=sk-...
@@ -150,26 +275,97 @@ CORS_ORIGINS=http://localhost:3000
 
 ## 📝 API Endpoints
 
+### Authentication
 | Endpoint | Description |
 |----------|-------------|
 | `POST /api/auth/register` | User registration |
 | `POST /api/auth/login/json` | Login (JSON) |
-| `POST /api/documents/upload` | Upload document |
-| `POST /api/flashcards/generate` | Generate flashcards from doc |
-| `POST /api/flashcards/cards/{id}/review` | Review flashcard |
-| `POST /api/quizzes/generate` | Generate quiz |
+| `GET /api/auth/me` | Get current user |
+
+### Documents
+| Endpoint | Description |
+|----------|-------------|
+| `POST /api/documents/upload` | Upload document (PDF, DOCX, TXT, PPTX) |
+| `GET /api/documents` | List user's documents |
+| `GET /api/documents/{id}` | Get document details |
+| `POST /api/documents/search` | Semantic search across all documents |
+| `POST /api/documents/{id}/search` | Search within specific document |
+
+### Chat & AI
+| Endpoint | Description |
+|----------|-------------|
+| `POST /api/chat/message` | Chat with AI (RAG-enabled) |
+| `POST /api/chat/stream` | Streaming chat responses |
+| `POST /api/chat/explain` | Get concept explanation |
+| `POST /api/chat/summarize` | Summarize text |
+
+### Flashcards
+| Endpoint | Description |
+|----------|-------------|
+| `POST /api/flashcards/generate` | Generate flashcards from document |
+| `GET /api/flashcards/decks` | List flashcard decks |
+| `GET /api/flashcards/decks/{id}` | Get deck with cards |
+| `POST /api/flashcards/cards/{id}/review` | Review flashcard (SM-2) |
+| `GET /api/flashcards/due` | Get cards due for review |
+
+### Quizzes
+| Endpoint | Description |
+|----------|-------------|
+| `POST /api/quizzes/generate` | Generate adaptive quiz |
+| `GET /api/quizzes` | List user's quizzes |
+| `POST /api/quizzes/{id}/start` | Start quiz attempt |
 | `POST /api/quizzes/{id}/submit` | Submit quiz answers |
-| `GET /api/progress/dashboard` | Progress stats |
-| `POST /api/chat/message` | Chat with AI |
+
+### Progress
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/progress/dashboard` | Progress stats & analytics |
+| `GET /api/progress/recommendations` | Daily study plan |
+| `GET /api/progress/heatmap` | Activity heatmap |
 
 ## 🎯 Usage
 
 1. **Register/Login** - Create account or sign in
-2. **Upload Documents** - Drag & drop your study materials
-3. **Generate Flashcards** - Click "Generate Cards" on any document
-4. **Review** - Practice with spaced repetition
-5. **Take Quizzes** - Test your knowledge
-6. **Track Progress** - View analytics and streaks
+2. **Upload Documents** - Drag & drop your study materials (PDF, DOCX, TXT, PPTX)
+3. **Ask AI Questions** - Chat with RAG-enabled AI about your documents
+4. **Search Documents** - Use semantic search to find relevant information
+5. **Generate Flashcards** - Auto-create flashcards from documents or specific topics
+6. **Review with Spaced Repetition** - Practice with SM-2 optimized scheduling
+7. **Take Adaptive Quizzes** - Test knowledge with AI-generated quizzes
+8. **Track Progress** - View analytics, streaks, and study recommendations
+
+## 🚀 CI/CD Pipeline
+
+### GitHub Actions Workflow
+
+The project includes automated CI/CD pipeline:
+
+**On Push/PR:**
+1. **Test Backend** - Run pytest
+2. **Test Frontend** - Run linter and build
+
+**On Push to Main:**
+3. **Build Docker Images** - Multi-stage builds for backend and frontend
+4. **Push to Docker Hub** - Tagged with commit SHA and `latest`
+
+### Setup CI/CD
+
+1. **Add GitHub Secrets:**
+   - `DOCKER_USERNAME` - Your Docker Hub username
+   - `DOCKER_PASSWORD` - Your Docker Hub password/token
+
+2. **Optional: Configure Deployment**
+   Uncomment the deploy job in `.github/workflows/ci-cd.yml` and add:
+   - `DEPLOY_HOST` - Server IP/domain
+   - `DEPLOY_USER` - SSH username
+   - `DEPLOY_SSH_KEY` - SSH private key
+
+### Manual Workflow Trigger
+
+```bash
+# Trigger workflow manually via GitHub UI
+# Actions tab → CI/CD Pipeline → Run workflow
+```
 
 ## 📄 License
 

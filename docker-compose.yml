@@ -17,19 +17,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-
-  redis:
-    image: redis:7-alpine
-    container_name: learning_assistant_redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+    networks:
+      - learning_network
 
   chromadb:
     image: chromadb/chroma:latest
@@ -41,8 +30,64 @@ services:
     environment:
       - IS_PERSISTENT=TRUE
       - ANONYMIZED_TELEMETRY=FALSE
+    networks:
+      - learning_network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: learning_assistant_backend
+    ports:
+      - "8001:8001"
+    volumes:
+      # Mount code for hot-reload in development
+      - ./backend:/app
+      - /app/__pycache__
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://learning_user:learning_pass@postgres:5432/learning_assistant
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+      - CHROMA_COLLECTION=learning_documents
+      - JWT_SECRET_KEY=dev-secret-key-change-in-production
+      - JWT_ALGORITHM=HS256
+      - ACCESS_TOKEN_EXPIRE_MINUTES=30
+      - CORS_ORIGINS=["http://localhost:3000"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      chromadb:
+        condition: service_started
+    networks:
+      - learning_network
+    command: uvicorn main:app --host 0.0.0.0 --port 8001 --reload
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: deps  # Use deps stage for development
+    container_name: learning_assistant_frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      # Mount code for hot-reload in development
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8001/api
+      - NODE_ENV=development
+    depends_on:
+      - backend
+    networks:
+      - learning_network
+    command: npm run dev
 
 volumes:
   postgres_data:
-  redis_data:
   chroma_data:
+
+networks:
+  learning_network:
+    driver: bridge
