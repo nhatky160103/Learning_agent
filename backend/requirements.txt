@@ -22,6 +22,7 @@ pypdf2==3.0.1
 pdfplumber==0.10.3
 python-docx==1.1.0
 python-pptx==0.6.23
+python-magic>=0.4.27  # MIME type validation
 
 # LLM & AI
 langchain>=0.1.4

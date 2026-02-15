@@ -42,6 +42,7 @@ class Document(Base):
     file_path: Mapped[Optional[str]] = mapped_column(String(1000))
     file_type: Mapped[Optional[str]] = mapped_column(String(50))
     file_size: Mapped[Optional[int]] = mapped_column(Integer)
+    file_hash: Mapped[Optional[str]] = mapped_column(String(64), index=True)  # SHA256 hash for duplicate detection
     status: Mapped[str] = mapped_column(String(50), default="processing")
     content_text: Mapped[Optional[str]] = mapped_column(Text)
     content_summary: Mapped[Optional[str]] = mapped_column(Text)
