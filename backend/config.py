@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     retrieval_top_k: int = 5
     similarity_threshold: float = 0.7
     
+    # Upload Settings
+    max_upload_size_mb: int = 50
+    upload_chunk_size: int = 8192  # 8KB chunks for streaming
+    upload_dir: str = "uploads"
+    
     # JWT
     secret_key: str = "your-super-secret-key-change-in-production"
     algorithm: str = "HS256"

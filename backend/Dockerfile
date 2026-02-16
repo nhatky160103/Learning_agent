@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     g++ \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
-
+        
 # Create virtual environment
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
@@ -51,8 +51,9 @@ ENV PATH="/opt/venv/bin:$PATH" \
 # Copy application code
 COPY --chown=1000:1000 . .
 
-# Create non-root user
+# Create non-root user and uploads directory
 RUN useradd -m -u 1000 appuser && \
+    mkdir -p /app/uploads && \
     chown -R appuser:appuser /app
 
 USER appuser

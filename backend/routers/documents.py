@@ -1,21 +1,28 @@
 import os
 import uuid
-import aiofiles
+import logging
 from datetime import datetime
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
+from config import settings
 from database.connection import get_db
 from database.models import User, Document
 from database.schemas import DocumentResponse, DocumentCreate
 from utils.security import get_current_user
+from utils.file_validator import sanitize_filename, save_upload_with_validation
 from services.document_processor import DocumentProcessor
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
-UPLOAD_DIR = "uploads"
+# Upload configuration from settings
+UPLOAD_DIR = settings.upload_dir
+MAX_UPLOAD_SIZE = settings.max_upload_size_mb * 1024 * 1024
+CHUNK_SIZE = settings.upload_chunk_size
+
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
@@ -26,10 +33,11 @@ async def upload_document(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Upload a document for processing."""
-    # Validate file type
+    """Upload a document with security validations."""
     allowed_types = [".pdf", ".docx", ".doc", ".txt", ".md", ".pptx", ".ppt"]
-    file_ext = os.path.splitext(file.filename)[1].lower()
+    
+    safe_filename = sanitize_filename(file.filename)
+    file_ext = os.path.splitext(safe_filename)[1].lower()
     
     if file_ext not in allowed_types:
         raise HTTPException(
@@ -37,32 +45,67 @@ async def upload_document(
             detail=f"File type not supported. Allowed: {', '.join(allowed_types)}"
         )
     
-    # Save file
     file_id = str(uuid.uuid4())
     file_path = os.path.join(UPLOAD_DIR, f"{file_id}{file_ext}")
     
-    async with aiofiles.open(file_path, 'wb') as f:
-        content = await file.read()
-        await f.write(content)
-    
-    # Create document record
-    document = Document(
-        user_id=current_user.id,
-        title=file.filename,
-        file_path=file_path,
-        file_type=file_ext[1:],  # Remove dot
-        file_size=len(content),
-        status="processing"
-    )
-    db.add(document)
-    await db.commit()
-    await db.refresh(document)
-    
-    # Process document in background
-    if background_tasks:
-        background_tasks.add_task(process_document_background, str(document.id), file_path)
-    
-    return document
+    try:
+        final_path, file_size, file_hash = await save_upload_with_validation(
+            file=file,
+            destination=file_path,
+            max_size_bytes=MAX_UPLOAD_SIZE,
+            chunk_size=CHUNK_SIZE
+        )
+        
+        existing = await db.execute(
+            select(Document).where(
+                Document.user_id == current_user.id,
+                Document.file_hash == file_hash
+            )
+        )
+        duplicate = existing.scalar_one_or_none()
+        
+        if duplicate:
+            if os.path.exists(final_path):
+                os.remove(final_path)
+            raise HTTPException(
+                status_code=400,
+                detail=f"This file has already been uploaded: {duplicate.title}"
+            )
+        
+        document = Document(
+            user_id=current_user.id,
+            title=safe_filename,
+            file_path=final_path,
+            file_type=file_ext[1:],
+            file_size=file_size,
+            file_hash=file_hash,
+            status="processing"
+        )
+        db.add(document)
+        await db.commit()
+        await db.refresh(document)
+        
+        logger.info(
+            "Document uploaded: doc_id=%s user_id=%s file=%s size=%d",
+            document.id, current_user.id, safe_filename, file_size
+        )
+        
+        if not background_tasks:
+            raise HTTPException(500, "Background processing unavailable")
+        
+        background_tasks.add_task(process_document_background, str(document.id), final_path)
+        return document
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        if os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+            except OSError:
+                pass
+        logger.exception("Upload failed for user %s: %s", current_user.id, e)
+        raise HTTPException(500, "Upload failed. Please try again.")
 
 
 async def process_document_background(document_id: str, file_path: str):
@@ -103,7 +146,10 @@ async def process_document_background(document_id: str, file_path: str):
             
         except Exception as e:
             document.status = "error"
-            print(f"Error processing document: {e}")
+            logger.exception(
+                "Document processing failed: doc_id=%s file=%s error=%s",
+                document.id, file_path, e
+            )
         
         await db.commit()
 
@@ -165,8 +211,8 @@ async def delete_document(
     processor = DocumentProcessor()
     try:
         await processor.delete_document_embeddings(document_id)
-    except Exception as e:
-        print(f"Error deleting embeddings: {e}")
+    except Exception:
+        logger.exception("Failed to delete embeddings for doc_id=%s", document_id)
     
     await db.delete(document)
     await db.commit()
