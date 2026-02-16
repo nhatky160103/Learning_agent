@@ -1,7 +1,6 @@
 import os
 import uuid
 import logging
-import traceback
 from datetime import datetime
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks
@@ -87,8 +86,8 @@ async def upload_document(
         await db.refresh(document)
         
         logger.info(
-            f"Document uploaded",
-            extra={"user_id": str(current_user.id), "document_id": str(document.id)}
+            "Document uploaded: doc_id=%s user_id=%s file=%s size=%d",
+            document.id, current_user.id, safe_filename, file_size
         )
         
         if not background_tasks:
@@ -103,12 +102,9 @@ async def upload_document(
         if os.path.exists(file_path):
             try:
                 os.remove(file_path)
-            except:
+            except OSError:
                 pass
-        logger.error(
-            f"Upload failed",
-            extra={"user_id": str(current_user.id), "error": str(e)}
-        )
+        logger.exception("Upload failed for user %s: %s", current_user.id, e)
         raise HTTPException(500, "Upload failed. Please try again.")
 
 
@@ -150,13 +146,9 @@ async def process_document_background(document_id: str, file_path: str):
             
         except Exception as e:
             document.status = "error"
-            logger.error(
-                f"Document processing failed",
-                extra={
-                    "document_id": str(document.id),
-                    "error": str(e),
-                    "traceback": traceback.format_exc()
-                }
+            logger.exception(
+                "Document processing failed: doc_id=%s file=%s error=%s",
+                document.id, file_path, e
             )
         
         await db.commit()
@@ -219,8 +211,8 @@ async def delete_document(
     processor = DocumentProcessor()
     try:
         await processor.delete_document_embeddings(document_id)
-    except Exception as e:
-        print(f"Error deleting embeddings: {e}")
+    except Exception:
+        logger.exception("Failed to delete embeddings for doc_id=%s", document_id)
     
     await db.delete(document)
     await db.commit()

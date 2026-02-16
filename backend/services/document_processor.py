@@ -1,5 +1,6 @@
 import os
 import json
+import logging
 from typing import Dict, List, Optional
 import asyncio
 
@@ -32,6 +33,8 @@ except ImportError:
 from config import settings
 from services.vector_store import get_vector_store
 
+logger = logging.getLogger(__name__)
+
 
 class DocumentProcessor:
     """Service for processing various document types."""
@@ -50,7 +53,7 @@ class DocumentProcessor:
         try:
             self.vector_store = get_vector_store()
         except Exception as e:
-            print(f"Warning: Vector store not available: {e}")
+            logger.warning("Vector store not available: %s", e)
     
     async def process(self, file_path: str, document_id: str = None, metadata: Dict = None) -> Dict:
         """Process a document and return structured content."""
@@ -84,7 +87,7 @@ class DocumentProcessor:
                 await self._store_embeddings(document_id, chunks, metadata)
                 result["embedding_status"] = "ready"
             except Exception as e:
-                print(f"Error storing embeddings: {e}")
+                logger.warning("Failed to store embeddings for doc %s: %s", document_id, e)
                 result["embedding_status"] = "error"
         
         return result
@@ -285,7 +288,7 @@ class DocumentProcessor:
                 metadata=metadata
             )
         except Exception as e:
-            print(f"Error storing embeddings for document {document_id}: {e}")
+            logger.exception("Failed to store embeddings for doc %s", document_id)
             raise
     
     async def reprocess_document(self, document_id: str, file_path: str, metadata: Dict) -> Dict:
@@ -295,7 +298,7 @@ class DocumentProcessor:
             try:
                 await self.vector_store.delete_document(document_id)
             except Exception as e:
-                print(f"Error deleting old embeddings: {e}")
+                logger.warning("Failed to delete old embeddings for doc %s: %s", document_id, e)
         
         # Process document again
         return await self.process(file_path, document_id, metadata)
@@ -306,5 +309,5 @@ class DocumentProcessor:
             try:
                 await self.vector_store.delete_document(document_id)
             except Exception as e:
-                print(f"Error deleting embeddings: {e}")
+                logger.exception("Failed to delete embeddings for doc %s", document_id)
                 raise

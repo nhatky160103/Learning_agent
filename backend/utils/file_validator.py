@@ -5,21 +5,25 @@ This module provides security features for file uploads:
 - Filename sanitization to prevent path traversal attacks
 - MIME type validation to prevent file type spoofing
 - Streaming file validation with size limits
+- SHA256 hashing for duplicate detection
 """
 
 import os
 import re
 import hashlib
+import logging
 import tempfile
 from typing import Optional, Tuple
 from fastapi import UploadFile, HTTPException
+
+logger = logging.getLogger(__name__)
 
 try:
     import magic
     MAGIC_AVAILABLE = True
 except ImportError:
     MAGIC_AVAILABLE = False
-    print("Warning: python-magic not installed. MIME type validation disabled.")
+    logger.warning("python-magic not installed. MIME type validation disabled.")
 
 
 # Allowed MIME types mapping
@@ -27,6 +31,7 @@ ALLOWED_MIME_TYPES = {
     '.pdf': ['application/pdf'],
     '.docx': [
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/zip',  # DOCX is a ZIP archive
         'application/octet-stream'  # Some systems report this for docx
     ],
     '.doc': ['application/msword'],
@@ -34,6 +39,7 @@ ALLOWED_MIME_TYPES = {
     '.md': ['text/plain', 'text/markdown'],
     '.pptx': [
         'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        'application/zip',
         'application/octet-stream'
     ],
     '.ppt': ['application/vnd.ms-powerpoint'],
@@ -93,10 +99,18 @@ def verify_mime_type(file_path: str, expected_extension: str) -> bool:
         detected_mime = mime.from_file(file_path)
         
         allowed_mimes = ALLOWED_MIME_TYPES.get(expected_extension, [])
-        return detected_mime in allowed_mimes
+        is_valid = detected_mime in allowed_mimes
         
-    except Exception as e:
-        print(f"MIME type validation error: {e}")
+        if not is_valid:
+            logger.warning(
+                "MIME type mismatch: expected one of %s for %s, got %s",
+                allowed_mimes, expected_extension, detected_mime
+            )
+        
+        return is_valid
+        
+    except Exception:
+        logger.exception("MIME type validation error")
         # On error, allow upload (fail open for availability)
         return True
 
@@ -111,8 +125,9 @@ async def save_upload_with_validation(
     Save uploaded file with streaming and validation.
     
     Features:
+    - Resets file stream position before reading
     - Streams file in chunks (memory efficient)
-    - Enforces file size limit
+    - Enforces file size limit during streaming
     - Calculates SHA256 hash for duplicate detection
     - Validates MIME type after upload
     
@@ -126,61 +141,75 @@ async def save_upload_with_validation(
         Tuple of (file_path, file_size, file_hash)
         
     Raises:
-        HTTPException: If file too large or MIME type mismatch
+        HTTPException: If file too large, empty, or MIME type mismatch
     """
     total_size = 0
     sha256 = hashlib.sha256()
     
-    # Create temp file in same directory as destination
-    # This ensures move operation is atomic (same filesystem)
+    # Create destination directory if needed
     dest_dir = os.path.dirname(destination)
     os.makedirs(dest_dir, exist_ok=True)
     
+    # Create temp file in same directory for atomic move
     temp_fd, temp_path = tempfile.mkstemp(dir=dest_dir, suffix='.tmp')
     
     try:
-        # Write file in chunks
+        # Reset file position — critical fix for when the stream
+        # has been partially or fully consumed by framework middleware
+        await file.seek(0)
+        
+        # Stream file to disk in chunks
         with os.fdopen(temp_fd, 'wb') as f:
             while True:
                 chunk = await file.read(chunk_size)
                 if not chunk:
                     break
                 
-                chunk_len = len(chunk)
-                total_size += chunk_len
+                total_size += len(chunk)
                 
-                # Check size limit
+                # Enforce size limit during streaming (fail fast)
                 if total_size > max_size_bytes:
                     raise HTTPException(
                         status_code=413,
-                        detail=f"File too large. Maximum size: {max_size_bytes / (1024*1024):.1f}MB"
+                        detail=f"File too large. Maximum size: {max_size_bytes / (1024*1024):.0f}MB"
                     )
                 
                 f.write(chunk)
                 sha256.update(chunk)
+        
+        # Reject empty files
+        if total_size == 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Uploaded file is empty."
+            )
         
         file_hash = sha256.hexdigest()
         
         # Validate MIME type
         file_ext = os.path.splitext(destination)[1].lower()
         if not verify_mime_type(temp_path, file_ext):
-            os.remove(temp_path)
             raise HTTPException(
                 status_code=400,
-                detail=f"File type mismatch. Expected {file_ext} but file content doesn't match."
+                detail=f"File content doesn't match the expected type ({file_ext})."
             )
         
-        # Move temp file to final destination (atomic)
+        # Atomic move: temp → final destination
         os.replace(temp_path, destination)
+        
+        logger.info(
+            "File saved successfully: %s (%d bytes, hash=%s…)",
+            os.path.basename(destination), total_size, file_hash[:12]
+        )
         
         return destination, total_size, file_hash
         
-    except Exception as e:
+    except Exception:
         # Cleanup temp file on any error
         if os.path.exists(temp_path):
             try:
                 os.remove(temp_path)
-            except:
+            except OSError:
                 pass
         raise
 
