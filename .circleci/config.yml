@@ -107,9 +107,6 @@ jobs:
   deploy:
     docker:
       - image: cimg/base:stable
-    environment:
-      RAILWAY_TOKEN: $RAILWAY_TOKEN
-      RAILWAY_PROJECT_ID: $RAILWAY_PROJECT_ID
     steps:
       - checkout
       - run:
