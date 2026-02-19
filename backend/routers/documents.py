@@ -154,7 +154,7 @@ async def process_document_background(document_id: str, file_path: str):
         await db.commit()
 
 
-@router.get("/", response_model=List[DocumentResponse])
+@router.get("", response_model=List[DocumentResponse])
 async def list_documents(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
