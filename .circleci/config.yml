@@ -41,7 +41,20 @@ jobs:
           command: |
             sudo apt-get update && sudo apt-get install -y postgresql-client
             until pg_isready -h localhost -U test_user; do sleep 1; done
-            until curl -sf http://localhost:8000/api/v1/heartbeat; do sleep 1; done
+            echo "Waiting for ChromaDB (max 60s)..."
+            CHROMA_READY=0
+            for i in $(seq 1 30); do
+              if curl -sf http://localhost:8000/api/v1/heartbeat > /dev/null 2>&1; then
+                echo "ChromaDB is ready!"
+                CHROMA_READY=1
+                break
+              fi
+              echo "  attempt $i/30..."
+              sleep 2
+            done
+            if [ $CHROMA_READY -eq 0 ]; then
+              echo "Warning: ChromaDB not ready, continuing anyway..."
+            fi
       - python/install-packages:
           pkg-manager: pip
           app-dir: backend
