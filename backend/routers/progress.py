@@ -88,7 +88,7 @@ async def get_user_stats(user_id, db: AsyncSession) -> UserStats:
     # Total quizzes taken
     quizzes_result = await db.execute(
         select(func.count(QuizAttempt.id))
-        .where(QuizAttempt.user_id == user_id, QuizAttempt.completed_at != None)
+        .where(QuizAttempt.user_id == user_id, QuizAttempt.completed_at.isnot(None))
     )
     total_quizzes = quizzes_result.scalar() or 0
     
@@ -141,12 +141,12 @@ async def get_user_stats(user_id, db: AsyncSession) -> UserStats:
     )
 
 
-async def get_weekly_progress(user_id, db: AsyncSession) -> List[DailyProgress]:
-    """Get progress for the last 7 days."""
+async def get_weekly_progress(user_id, db: AsyncSession, days: int = 14) -> List[DailyProgress]:
+    """Get progress for the last N days (default 14 to support velocity comparison)."""
     progress = []
     today = datetime.utcnow().date()
     
-    for i in range(7):
+    for i in range(days - 1, -1, -1):
         date = today - timedelta(days=i)
         date_start = datetime.combine(date, datetime.min.time())
         date_end = datetime.combine(date, datetime.max.time())
