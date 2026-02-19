@@ -7,7 +7,7 @@ import json
 class Settings(BaseSettings):
     # App
     app_name: str = "Smart Learning Companion"
-    debug: bool = True
+    debug: bool = False
     
     # API Keys
     openai_api_key: str = ""
