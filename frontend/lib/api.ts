@@ -1,6 +1,9 @@
 import axios, { AxiosError, AxiosResponse } from 'axios';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001/api';
+// const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001/api';
+const API_BASE_URL = typeof window !== 'undefined' 
+    ? '/api' 
+    : (process.env.NEXT_PUBLIC_API_URL + '/api' || 'http://localhost:8001/api');
 
 // Create axios instance
 const api = axios.create({
