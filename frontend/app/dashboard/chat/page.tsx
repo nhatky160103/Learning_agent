@@ -225,7 +225,7 @@ export default function ChatPage() {
                 <div className="flex items-center gap-3">
                     <Sparkles className="w-6 h-6 text-accent-400" />
                     <h1 className="text-xl font-bold text-white">
-                        AI Study Assistant
+                        Study Assistant
                     </h1>
                 </div>
 

@@ -36,8 +36,8 @@ async def generate_quiz(
         document = result.scalar_one_or_none()
         if not document:
             raise HTTPException(status_code=404, detail="Document not found")
-        if document.status != "ready":
-            raise HTTPException(status_code=400, detail="Document is still processing")
+        if document.status not in ["ready", "processed"]:
+            raise HTTPException(status_code=400, detail=f"Document is not ready (current status: {document.status})")
         content = document.content_text
     elif request.deck_id:
         result = await db.execute(

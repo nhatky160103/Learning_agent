@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -62,18 +62,54 @@ export default function QuizzesPage() {
         loadData();
     }, []);
 
+    // Poll for document status updates
+    useEffect(() => {
+        const hasProcessingDocs = documents.some(doc => doc.status === 'processing' || doc.status === 'uploading');
+        if (!hasProcessingDocs) return;
+
+        const interval = setInterval(() => {
+            loadData();
+        }, 5000);
+
+        return () => clearInterval(interval);
+    }, [documents]);
+
+    // const loadData = async () => {
+    //     try {
+    //         const [quizzesData, docsData, decksData] = await Promise.all([
+    //             quizzesApi.list(),
+    //             documentsApi.list(),
+    //             flashcardsApi.listDecks(),
+    //         ]);
+    //         setQuizzes(quizzesData);
+    //         setDocuments(docsData);
+    //         setDecks(decksData);
+    //     } catch (error) {
+    //         console.error('Failed to load data:', error);
+    //     } finally {
+    //         setLoading(false);
+    //     }
+    // };
     const loadData = async () => {
         try {
-            const [quizzesData, docsData, decksData] = await Promise.all([
+            const [quizzesData, docsData, decksData] = await Promise.allSettled([
                 quizzesApi.list(),
                 documentsApi.list(),
                 flashcardsApi.listDecks(),
             ]);
-            setQuizzes(quizzesData);
-            setDocuments(docsData.filter((d: any) => d.status === 'ready' || d.status === 'processed'));
-            setDecks(decksData);
-        } catch (error) {
-            console.error('Failed to load data:', error);
+
+            if (quizzesData.status === 'fulfilled') setQuizzes(quizzesData.value);
+            else console.error('Failed to load quizzes:', quizzesData.reason);
+
+            if (docsData.status === 'fulfilled') setDocuments(docsData.value);
+            else {
+                console.error('Failed to load documents:', docsData.reason);
+                toast.error('Failed to load documents');
+            }
+
+            if (decksData.status === 'fulfilled') setDecks(decksData.value);
+            else console.error('Failed to load decks:', decksData.reason);
+
         } finally {
             setLoading(false);
         }
@@ -435,12 +471,18 @@ export default function QuizzesPage() {
                                     <select
                                         value={generateForm.sourceId}
                                         onChange={(e) => setGenerateForm({ ...generateForm, sourceId: e.target.value })}
-                                        className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white focus:outline-none focus:border-primary-500"
+                                        className="w-full px-4 py-3 bg-gray-900 border border-white/10 rounded-xl text-white focus:outline-none focus:border-primary-500"
                                     >
-                                        <option value="">Select...</option>
+                                        <option value="" className="bg-gray-900 text-white">Select...</option>
                                         {(generateForm.source === 'document' ? documents : decks).map((item: any) => (
-                                            <option key={item.id} value={item.id}>
-                                                {item.original_filename || item.name}
+                                            <option
+                                                key={item.id}
+                                                value={item.id}
+                                                className="bg-gray-900 text-white"
+                                                disabled={generateForm.source === 'document' && item.status !== 'ready' && item.status !== 'processed'}
+                                            >
+                                                {item.title || item.original_filename || item.name}
+                                                {generateForm.source === 'document' && (item.status === 'processing' || item.status === 'uploading') ? ' (Processing...)' : ''}
                                             </option>
                                         ))}
                                     </select>
@@ -452,10 +494,10 @@ export default function QuizzesPage() {
                                         <select
                                             value={generateForm.questionCount}
                                             onChange={(e) => setGenerateForm({ ...generateForm, questionCount: Number(e.target.value) })}
-                                            className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white focus:outline-none focus:border-primary-500"
+                                            className="w-full px-4 py-3 bg-gray-900 border border-white/10 rounded-xl text-white focus:outline-none focus:border-primary-500"
                                         >
                                             {[5, 10, 15, 20].map(n => (
-                                                <option key={n} value={n}>{n}</option>
+                                                <option key={n} value={n} className="bg-gray-900 text-white">{n}</option>
                                             ))}
                                         </select>
                                     </div>
@@ -464,11 +506,11 @@ export default function QuizzesPage() {
                                         <select
                                             value={generateForm.difficulty}
                                             onChange={(e) => setGenerateForm({ ...generateForm, difficulty: e.target.value })}
-                                            className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white focus:outline-none focus:border-primary-500"
+                                            className="w-full px-4 py-3 bg-gray-900 border border-white/10 rounded-xl text-white focus:outline-none focus:border-primary-500"
                                         >
-                                            <option value="easy">Easy</option>
-                                            <option value="medium">Medium</option>
-                                            <option value="hard">Hard</option>
+                                            <option value="easy" className="bg-gray-900 text-white">Easy</option>
+                                            <option value="medium" className="bg-gray-900 text-white">Medium</option>
+                                            <option value="hard" className="bg-gray-900 text-white">Hard</option>
                                         </select>
                                     </div>
                                 </div>

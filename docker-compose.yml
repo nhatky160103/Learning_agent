@@ -75,7 +75,7 @@ services:
       - /app/node_modules
       - /app/.next
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8001/api
+      - NEXT_PUBLIC_API_URL=http://backend:8001
       - NODE_ENV=development
     depends_on:
       - backend

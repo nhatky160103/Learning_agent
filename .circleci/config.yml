@@ -34,13 +34,13 @@ jobs:
       DATABASE_URL: postgresql+asyncpg://test_user:test_pass@localhost:5432/test_db
       CHROMA_HOST: localhost
       CHROMA_PORT: 8000
+      TESTING: "1"
     steps:
       - checkout
       - run:
           name: Wait for Postgres & ChromaDB
           command: |
-            sudo apt-get update && sudo apt-get install -y postgresql-client
-            until pg_isready -h localhost -U test_user; do sleep 1; done
+            dockerize -wait tcp://localhost:5432 -timeout 30s
             echo "Waiting for ChromaDB (max 60s)..."
             CHROMA_READY=0
             for i in $(seq 1 30); do
@@ -48,7 +48,7 @@ jobs:
                 echo "ChromaDB is ready!"
                 CHROMA_READY=1
                 break
-              fi
+              fi  
               echo "  attempt $i/30..."
               sleep 2
             done
@@ -58,13 +58,12 @@ jobs:
       - python/install-packages:
           pkg-manager: pip
           app-dir: backend
-          pip-dependency-file: requirements.txt
+          pip-dependency-file: requirements-dev.txt
       - run:
           name: Run Tests
           command: |
             cd backend
-            pip install -r requirements-dev.txt
-            pytest
+            pytest -x -q --tb=short
 
   build-and-push-backend:
     executor: docker/docker
