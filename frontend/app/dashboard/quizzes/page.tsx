@@ -99,7 +99,10 @@ export default function QuizzesPage() {
             ]);
 
             if (quizzesData.status === 'fulfilled') setQuizzes(quizzesData.value);
-            else console.error('Failed to load quizzes:', quizzesData.reason);
+            else {
+                console.error('Failed to load quizzes:', quizzesData.reason);
+                toast.error('Failed to load quizzes');
+            }
 
             if (docsData.status === 'fulfilled') setDocuments(docsData.value);
             else {
@@ -136,7 +139,16 @@ export default function QuizzesPage() {
             }
 
             const quiz = await quizzesApi.generate(payload);
-            setQuizzes([quiz, ...quizzes]);
+            setQuizzes([{
+                id: quiz.id,
+                title: quiz.title,
+                description: quiz.description,
+                question_count: quiz.question_count,
+                difficulty: quiz.difficulty,
+                attempts: 0,
+                best_score: undefined,
+                created_at: quiz.created_at,
+            }, ...quizzes]);
             setShowGenerate(false);
             setGenerateForm({ source: 'document', sourceId: '', title: '', questionCount: 5, difficulty: 'medium' });
             toast.success('Quiz generated!');
