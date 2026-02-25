@@ -14,6 +14,7 @@ from database.schemas import (
 )
 from utils.security import get_current_user
 from services.quiz_generator import QuizGenerator
+from routers.progress import record_study_session, update_topic_mastery
 
 router = APIRouter()
 
@@ -278,15 +279,33 @@ async def submit_quiz(
     attempt.time_taken_seconds = submission.time_taken_seconds
     attempt.completed_at = datetime.utcnow()
     
-    # Calculate XP (base XP + bonus for accuracy)
+    # Calculate scores
     max_score = sum(q.points for q in questions.values())
     total_questions = len(questions)
     percentage = (total_score / max_score * 100) if max_score > 0 else 0
-    xp_earned = int(10 + (percentage / 10))  # 10 base + up to 10 bonus
-    
-    # Update user XP
-    current_user.total_xp += xp_earned
-    
+
+    # Auto-record study session (creates StudySession, awards XP, updates streak)
+    duration_minutes = max(submission.time_taken_seconds // 60, 1)
+    session = await record_study_session(
+        user=current_user,
+        db=db,
+        session_type="quiz",
+        duration_minutes=duration_minutes,
+        items_reviewed=total_questions,
+        accuracy=percentage,
+        topics={"quiz_title": quiz.title},
+    )
+    xp_earned = session.xp_earned
+
+    # Update topic mastery
+    await update_topic_mastery(
+        user_id=current_user.id,
+        db=db,
+        topic_name=quiz.title,
+        total_questions=total_questions,
+        correct_answers=correct_count,
+    )
+
     await db.commit()
     
     return QuizResult(

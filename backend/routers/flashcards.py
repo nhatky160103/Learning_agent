@@ -17,6 +17,7 @@ from database.schemas import (
 from utils.security import get_current_user
 from services.flashcard_generator import FlashcardGenerator
 from services.spaced_repetition import SpacedRepetitionService
+from routers.progress import record_study_session
 
 router = APIRouter()
 
@@ -309,6 +310,18 @@ async def review_flashcard(
         was_correct=review_data.quality_rating >= 3
     )
     db.add(review)
+    
+    # Auto-record study session for progress tracking
+    duration_minutes = max((review_data.time_spent_seconds or 30) // 60, 1)
+    was_correct = review_data.quality_rating >= 3
+    await record_study_session(
+        user=current_user,
+        db=db,
+        session_type="flashcard",
+        duration_minutes=duration_minutes,
+        items_reviewed=1,
+        accuracy=100.0 if was_correct else 0.0,
+    )
     
     await db.commit()
     
