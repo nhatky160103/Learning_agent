@@ -18,6 +18,85 @@ from utils.security import get_current_user
 router = APIRouter()
 
 
+async def record_study_session(
+    user: User,
+    db: AsyncSession,
+    session_type: str,
+    duration_minutes: int,
+    items_reviewed: int,
+    accuracy: float = None,
+    topics: dict = None,
+) -> StudySession:
+    """Create a StudySession, award XP, and update streak.
+    
+    Call this from any router (quiz, flashcard, etc.) to automatically
+    track the user's study activity for progress dashboards.
+    """
+    # Calculate XP
+    base_xp = max(duration_minutes, 1)  # At least 1 XP
+    items_bonus = items_reviewed * 2
+    accuracy_bonus = int((accuracy or 0) / 10)
+    xp_earned = base_xp + items_bonus + accuracy_bonus
+
+    session = StudySession(
+        user_id=user.id,
+        session_type=session_type,
+        duration_minutes=duration_minutes,
+        items_reviewed=items_reviewed,
+        accuracy=accuracy,
+        topics=topics,
+        xp_earned=xp_earned,
+        ended_at=datetime.utcnow(),
+    )
+    db.add(session)
+
+    # Update user XP
+    user.total_xp += xp_earned
+
+    # Update streak
+    await update_streak(user, db)
+
+    return session
+
+
+async def update_topic_mastery(
+    user_id,
+    db: AsyncSession,
+    topic_name: str,
+    total_questions: int,
+    correct_answers: int,
+):
+    """Create or update a TopicMastery record after a quiz."""
+    result = await db.execute(
+        select(TopicMastery).where(
+            TopicMastery.user_id == user_id,
+            TopicMastery.topic_name == topic_name,
+        )
+    )
+    tm = result.scalar_one_or_none()
+
+    if tm:
+        tm.total_questions_answered += total_questions
+        tm.correct_answers += correct_answers
+        tm.mastery_level = (
+            tm.correct_answers / tm.total_questions_answered * 100
+            if tm.total_questions_answered > 0
+            else 0
+        )
+        tm.last_practiced = datetime.utcnow()
+    else:
+        mastery = (correct_answers / total_questions * 100) if total_questions > 0 else 0
+        tm = TopicMastery(
+            user_id=user_id,
+            topic_name=topic_name,
+            mastery_level=mastery,
+            total_questions_answered=total_questions,
+            correct_answers=correct_answers,
+            last_practiced=datetime.utcnow(),
+        )
+        db.add(tm)
+
+
 @router.get("/dashboard", response_model=ProgressDashboard)
 async def get_dashboard(
     current_user: User = Depends(get_current_user),

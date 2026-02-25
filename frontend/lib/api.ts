@@ -3,10 +3,10 @@ import axios, { AxiosError, AxiosResponse } from 'axios';
 // const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001/api';
 const API_BASE_URL = typeof window !== 'undefined'
     ? '/api'
-    : (process.env.NEXT_PUBLIC_API_URL 
-        ? `${process.env.NEXT_PUBLIC_API_URL}/api` 
+    : (process.env.NEXT_PUBLIC_API_URL
+        ? `${process.env.NEXT_PUBLIC_API_URL}/api`
         : 'http://localhost:8001/api');
-        
+
 // Create axios instance
 const api = axios.create({
     baseURL: API_BASE_URL,
@@ -179,7 +179,7 @@ export const quizzesApi = {
         return response.data;
     },
     list: async () => {
-        const response = await api.get('/quizzes');
+        const response = await api.get('/quizzes/');
         return response.data;
     },
     get: async (id: string) => {
