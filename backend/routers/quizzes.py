@@ -16,7 +16,7 @@ from utils.security import get_current_user
 from services.quiz_generator import QuizGenerator
 from routers.progress import record_study_session, update_topic_mastery
 
-router = APIRouter()
+router = APIRouter(redirect_slashes=False)
 
 
 @router.post("/generate", response_model=QuizWithQuestions)
@@ -111,7 +111,7 @@ async def generate_quiz(
     return quiz
 
 
-@router.get("/", response_model=List[QuizResponse])
+@router.get("", response_model=List[QuizResponse])
 async def list_quizzes(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)

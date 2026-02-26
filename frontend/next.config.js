@@ -3,7 +3,8 @@ const nextConfig = {
     reactStrictMode: true,
     output: 'standalone',
     async rewrites() {
-        const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001';
+        // INTERNAL_API_URL dùng cho SSR trong docker, NEXT_PUBLIC_API_URL fallback khi dev local
+        const backendUrl = process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001';
         return [
             {
                 source: '/api/:path*',
