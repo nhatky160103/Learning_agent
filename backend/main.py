@@ -20,7 +20,8 @@ app = FastAPI(
     title=settings.app_name,
     description="AI-powered personalized learning assistant",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
+    redirect_slashes=False
 )
 
 # CORS

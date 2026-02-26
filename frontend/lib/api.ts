@@ -1,11 +1,10 @@
 import axios, { AxiosError, AxiosResponse } from 'axios';
 
-// const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001/api';
+// Browser: dùng relative path để đi qua Next.js rewrite proxy
+// Server-side (SSR): gọi thẳng backend nội bộ, không qua proxy
 const API_BASE_URL = typeof window !== 'undefined'
     ? '/api'
-    : (process.env.NEXT_PUBLIC_API_URL
-        ? `${process.env.NEXT_PUBLIC_API_URL}/api`
-        : 'http://localhost:8001/api');
+    : `${process.env.INTERNAL_API_URL || 'http://backend:8001'}/api`;
 
 // Create axios instance
 const api = axios.create({
@@ -179,7 +178,7 @@ export const quizzesApi = {
         return response.data;
     },
     list: async () => {
-        const response = await api.get('/quizzes/');
+        const response = await api.get('/quizzes');
         return response.data;
     },
     get: async (id: string) => {
