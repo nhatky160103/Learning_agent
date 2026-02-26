@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
     Upload, FileText, File, Trash2, Eye, Loader2,
     CheckCircle, Clock, AlertCircle, Search, Plus,
-    Layers, Brain
+    Layers, Brain, BookOpen, BarChart2, Map, ChevronDown, ChevronUp, X
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { documentsApi, flashcardsApi } from '@/lib/api';
@@ -34,6 +34,11 @@ export default function DocumentsPage() {
     const [isSearching, setIsSearching] = useState(false);
     const [generatingFlashcards, setGeneratingFlashcards] = useState<string | null>(null);
     const [searchModalDoc, setSearchModalDoc] = useState<Document | null>(null);
+    const [reviewDoc, setReviewDoc] = useState<any | null>(null);
+    const [reviewLoading, setReviewLoading] = useState<string | null>(null);
+    const [studyGuideDoc, setStudyGuideDoc] = useState<any | null>(null);
+    const [studyGuideLoading, setStudyGuideLoading] = useState<string | null>(null);
+    const [expandedDocId, setExpandedDocId] = useState<string | null>(null);
 
     useEffect(() => {
         loadDocuments();
@@ -143,6 +148,30 @@ export default function DocumentsPage() {
             toast.error(error.response?.data?.detail || 'Failed to generate flashcards');
         } finally {
             setGeneratingFlashcards(null);
+        }
+    };
+
+    const handleReview = async (doc: Document) => {
+        setReviewLoading(doc.id);
+        try {
+            const data = await documentsApi.review(doc.id);
+            setReviewDoc({ ...data, docTitle: doc.original_filename });
+        } catch (error) {
+            toast.error('Failed to generate review');
+        } finally {
+            setReviewLoading(null);
+        }
+    };
+
+    const handleStudyGuide = async (doc: Document) => {
+        setStudyGuideLoading(doc.id);
+        try {
+            const data = await documentsApi.studyGuide(doc.id);
+            setStudyGuideDoc({ ...data, docTitle: doc.original_filename });
+        } catch (error) {
+            toast.error('Failed to generate study guide');
+        } finally {
+            setStudyGuideLoading(null);
         }
     };
 
@@ -325,12 +354,26 @@ export default function DocumentsPage() {
                                                 disabled={(doc.status !== 'ready' && doc.status !== 'processed') || generatingFlashcards === doc.id}
                                                 className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-primary-500/20 text-primary-400 hover:bg-primary-500/30 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
                                             >
-                                                {generatingFlashcards === doc.id ? (
-                                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                                ) : (
-                                                    <Layers className="w-4 h-4" />
-                                                )}
-                                                Generate Cards
+                                                {generatingFlashcards === doc.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Layers className="w-4 h-4" />}
+                                                Cards
+                                            </button>
+                                            <button
+                                                onClick={() => handleReview(doc)}
+                                                disabled={(doc.status !== 'ready' && doc.status !== 'processed') || reviewLoading === doc.id}
+                                                className="flex items-center justify-center gap-1 px-3 py-2 rounded-lg bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+                                                title="AI Review"
+                                            >
+                                                {reviewLoading === doc.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Brain className="w-4 h-4" />}
+                                                Review
+                                            </button>
+                                            <button
+                                                onClick={() => handleStudyGuide(doc)}
+                                                disabled={(doc.status !== 'ready' && doc.status !== 'processed') || studyGuideLoading === doc.id}
+                                                className="flex items-center justify-center gap-1 px-3 py-2 rounded-lg bg-green-500/20 text-green-400 hover:bg-green-500/30 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+                                                title="Study Guide"
+                                            >
+                                                {studyGuideLoading === doc.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <BookOpen className="w-4 h-4" />}
+                                                Guide
                                             </button>
                                             <button
                                                 onClick={() => setSearchModalDoc(doc)}
@@ -354,6 +397,220 @@ export default function DocumentsPage() {
                     )}
                 </>
             )}
+
+            {/* Review Modal */}
+            <AnimatePresence>
+                {reviewDoc && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+                        onClick={() => setReviewDoc(null)}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.95, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.95, opacity: 0 }}
+                            onClick={e => e.stopPropagation()}
+                            className="glass rounded-2xl w-full max-w-2xl max-h-[80vh] overflow-y-auto p-6"
+                        >
+                            <div className="flex items-center justify-between mb-6">
+                                <div className="flex items-center gap-3">
+                                    <Brain className="w-6 h-6 text-purple-400" />
+                                    <h2 className="text-xl font-bold text-white">AI Review</h2>
+                                </div>
+                                <button onClick={() => setReviewDoc(null)} className="p-2 rounded-lg hover:bg-white/10 text-gray-400">
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+                            <p className="text-gray-400 text-sm mb-6">{reviewDoc.docTitle}</p>
+
+                            {reviewDoc.review && (
+                                <div className="space-y-5">
+                                    {/* Overview */}
+                                    <div className="bg-white/5 rounded-xl p-4">
+                                        <p className="text-gray-200 leading-relaxed">{reviewDoc.review.overview}</p>
+                                        <div className="flex gap-3 mt-3">
+                                            <span className="px-3 py-1 rounded-full bg-blue-500/20 text-blue-300 text-xs">{reviewDoc.review.difficulty_level}</span>
+                                            <span className="px-3 py-1 rounded-full bg-green-500/20 text-green-300 text-xs">~{reviewDoc.review.estimated_study_time_minutes} min</span>
+                                            <span className="px-3 py-1 rounded-full bg-purple-500/20 text-purple-300 text-xs">Quality: {reviewDoc.review.quality_score}/10</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Key Concepts */}
+                                    {reviewDoc.review.key_concepts?.length > 0 && (
+                                        <div>
+                                            <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
+                                                <Brain className="w-4 h-4 text-purple-400" /> Key Concepts
+                                            </h3>
+                                            <div className="space-y-2">
+                                                {reviewDoc.review.key_concepts.map((c: any, i: number) => (
+                                                    <div key={i} className="flex items-start gap-3 bg-white/5 rounded-lg p-3">
+                                                        <span className={`mt-0.5 px-2 py-0.5 rounded text-xs ${
+                                                            c.importance === 'high' ? 'bg-red-500/20 text-red-300' :
+                                                            c.importance === 'medium' ? 'bg-yellow-500/20 text-yellow-300' :
+                                                            'bg-gray-500/20 text-gray-300'
+                                                        }`}>{c.importance}</span>
+                                                        <div>
+                                                            <p className="text-white font-medium">{c.concept}</p>
+                                                            <p className="text-gray-400 text-sm">{c.brief_explanation}</p>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Learning Objectives */}
+                                    {reviewDoc.review.learning_objectives?.length > 0 && (
+                                        <div>
+                                            <h3 className="text-white font-semibold mb-3">🎯 Learning Objectives</h3>
+                                            <ul className="space-y-2">
+                                                {reviewDoc.review.learning_objectives.map((obj: string, i: number) => (
+                                                    <li key={i} className="flex items-start gap-2 text-gray-300 text-sm">
+                                                        <CheckCircle className="w-4 h-4 text-green-400 mt-0.5 shrink-0" />
+                                                        {obj}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+
+                                    {/* Study Recommendations */}
+                                    {reviewDoc.review.study_recommendations?.length > 0 && (
+                                        <div>
+                                            <h3 className="text-white font-semibold mb-3">📚 Study Strategies</h3>
+                                            <div className="space-y-2">
+                                                {reviewDoc.review.study_recommendations.map((r: any, i: number) => (
+                                                    <div key={i} className="bg-white/5 rounded-lg p-3">
+                                                        <p className="text-white font-medium text-sm">{r.strategy}</p>
+                                                        <p className="text-gray-400 text-xs mt-1">{r.description}</p>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Quiz Topics */}
+                                    {reviewDoc.review.potential_quiz_topics?.length > 0 && (
+                                        <div>
+                                            <h3 className="text-white font-semibold mb-3">❓ Potential Quiz Topics</h3>
+                                            <div className="flex flex-wrap gap-2">
+                                                {reviewDoc.review.potential_quiz_topics.map((t: string, i: number) => (
+                                                    <span key={i} className="px-3 py-1 rounded-full bg-white/10 text-gray-300 text-xs">{t}</span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Study Guide Modal */}
+            <AnimatePresence>
+                {studyGuideDoc && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+                        onClick={() => setStudyGuideDoc(null)}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.95, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.95, opacity: 0 }}
+                            onClick={e => e.stopPropagation()}
+                            className="glass rounded-2xl w-full max-w-2xl max-h-[80vh] overflow-y-auto p-6"
+                        >
+                            <div className="flex items-center justify-between mb-6">
+                                <div className="flex items-center gap-3">
+                                    <BookOpen className="w-6 h-6 text-green-400" />
+                                    <h2 className="text-xl font-bold text-white">Study Guide</h2>
+                                </div>
+                                <button onClick={() => setStudyGuideDoc(null)} className="p-2 rounded-lg hover:bg-white/10 text-gray-400">
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+                            <p className="text-gray-400 text-sm mb-6">{studyGuideDoc.docTitle}</p>
+
+                            {studyGuideDoc.study_guide && (
+                                <div className="space-y-5">
+                                    {/* Outline */}
+                                    {studyGuideDoc.study_guide.outline?.length > 0 && (
+                                        <div>
+                                            <h3 className="text-white font-semibold mb-3">📋 Outline</h3>
+                                            <div className="space-y-3">
+                                                {studyGuideDoc.study_guide.outline.map((section: any, i: number) => (
+                                                    <div key={i} className="bg-white/5 rounded-xl p-4">
+                                                        <p className="text-white font-medium mb-2">{section.section}</p>
+                                                        <p className="text-gray-400 text-xs mb-3 italic">{section.summary}</p>
+                                                        <ul className="space-y-1">
+                                                            {section.key_points?.map((pt: string, j: number) => (
+                                                                <li key={j} className="text-gray-300 text-sm flex items-start gap-2">
+                                                                    <span className="text-primary-400 mt-0.5">•</span> {pt}
+                                                                </li>
+                                                            ))}
+                                                        </ul>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Must Know Facts */}
+                                    {studyGuideDoc.study_guide.must_know_facts?.length > 0 && (
+                                        <div>
+                                            <h3 className="text-white font-semibold mb-3">⚡ Must-Know Facts</h3>
+                                            <ul className="space-y-2">
+                                                {studyGuideDoc.study_guide.must_know_facts.map((f: string, i: number) => (
+                                                    <li key={i} className="flex items-start gap-2 text-gray-300 text-sm bg-yellow-500/5 border border-yellow-500/20 rounded-lg p-3">
+                                                        <span className="text-yellow-400 shrink-0">★</span> {f}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+
+                                    {/* Memory Aids */}
+                                    {studyGuideDoc.study_guide.memory_aids?.length > 0 && (
+                                        <div>
+                                            <h3 className="text-white font-semibold mb-3">🧠 Memory Aids</h3>
+                                            <div className="space-y-2">
+                                                {studyGuideDoc.study_guide.memory_aids.map((m: any, i: number) => (
+                                                    <div key={i} className="bg-white/5 rounded-lg p-3">
+                                                        <p className="text-white text-sm font-medium">{m.concept}</p>
+                                                        <p className="text-accent-400 text-sm mt-1">💡 {m.mnemonic}</p>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Quick Review Checklist */}
+                                    {studyGuideDoc.study_guide.quick_review_checklist?.length > 0 && (
+                                        <div>
+                                            <h3 className="text-white font-semibold mb-3">✅ Self-Check</h3>
+                                            <ul className="space-y-2">
+                                                {studyGuideDoc.study_guide.quick_review_checklist.map((q: string, i: number) => (
+                                                    <li key={i} className="flex items-center gap-3 text-gray-300 text-sm">
+                                                        <input type="checkbox" className="rounded accent-primary-500" />
+                                                        {q}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             {/* Search Modal */}
             <SearchModal

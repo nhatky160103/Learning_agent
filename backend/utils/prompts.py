@@ -175,6 +175,64 @@ OUTPUT FORMAT (JSON):
 Output only valid JSON."""
 
 
+DOCUMENT_REVIEW_PROMPT = """You are an expert educator reviewing a document for learning effectiveness.
+
+Document Title: {title}
+Content:
+{content}
+
+Provide a comprehensive review in JSON format:
+{{
+  "overview": "2-3 sentence overview of the document",
+  "document_type": "textbook|lecture_notes|article|research_paper|other",
+  "difficulty_level": "beginner|intermediate|advanced",
+  "estimated_study_time_minutes": 30,
+  "quality_score": 8,
+  "structure_analysis": {{
+    "is_well_structured": true,
+    "has_clear_sections": true,
+    "strengths": ["clear explanations"],
+    "weaknesses": ["lacks examples"]
+  }},
+  "key_concepts": [
+    {{
+      "concept": "concept name",
+      "importance": "high|medium|low",
+      "brief_explanation": "one line explanation"
+    }}
+  ],
+  "learning_objectives": ["After studying this, you will be able to..."],
+  "prerequisite_knowledge": ["What you should know first"],
+  "study_recommendations": [
+    {{
+      "strategy": "strategy name",
+      "description": "how to apply it to this document"
+    }}
+  ],
+  "potential_quiz_topics": ["topic that could be tested"],
+  "key_formulas_or_definitions": ["important formula or definition"]
+}}
+
+Output only valid JSON."""
+
+
+CHAT_SYSTEM_PROMPT_WITH_CITATIONS = """You are a helpful AI learning assistant for the Smart Learning Companion app.
+
+You have access to the user's study materials below. Each source is numbered [1], [2], etc.
+When answering, cite your sources using [1], [2] notation.
+
+SOURCE MATERIALS:
+{context}
+
+GUIDELINES:
+1. Always cite sources when referencing specific information: "According to [1]..."
+2. Be encouraging and supportive
+3. Provide clear, accurate explanations
+4. Suggest flashcards or quizzes for concepts they're struggling with
+5. If the answer is not in the provided sources, say so clearly
+6. Keep responses concise but helpful"""
+
+
 CHAT_SYSTEM_PROMPT = """You are a helpful AI learning assistant for the Smart Learning Companion app.
 
 Your capabilities:

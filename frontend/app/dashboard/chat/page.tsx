@@ -316,8 +316,12 @@ export default function ChatPage() {
                                                             </p>
                                                             <div className="flex flex-wrap gap-2">
                                                                 {message.sources.map((source: any, i: number) => (
-                                                                    <span key={i} className="text-xs px-2 py-1 rounded-md bg-white/5 text-gray-400 border border-white/5">
-                                                                        {source.title || `Document ${i + 1}`}
+                                                                    <span key={i} className="text-xs px-2 py-1 rounded-md bg-white/5 text-gray-400 border border-white/5 flex items-center gap-1">
+                                                                        <span className="text-primary-400 font-mono">[{source.citation_number || i + 1}]</span>
+                                                                        {source.document_title || source.title || `Document ${i + 1}`}
+                                                                        {source.relevance_score && (
+                                                                            <span className="text-gray-600 ml-1">{Math.round(source.relevance_score * 100)}%</span>
+                                                                        )}
                                                                     </span>
                                                                 ))}
                                                             </div>
