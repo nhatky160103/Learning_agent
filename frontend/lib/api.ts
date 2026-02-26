@@ -62,6 +62,27 @@ export const authApi = {
 
 // Documents API
 export const documentsApi = {
+    review: async (id: string) => {
+        const response = await api.post(`/documents/${id}/review`);
+        return response.data;
+    },
+    studyGuide: async (id: string) => {
+        const response = await api.post(`/documents/${id}/study-guide`);
+        return response.data;
+    },
+    analyzeGaps: async (id: string) => {
+        const response = await api.post(`/documents/${id}/analyze-gaps`);
+        return response.data;
+    },
+    getChunks: async (id: string) => {
+        const response = await api.get(`/documents/${id}/chunks`);
+        return response.data;
+    },
+    reprocess: async (id: string) => {
+        const response = await api.post(`/documents/${id}/reprocess`);
+        return response.data;
+    },
+
     upload: async (file: File) => {
         const formData = new FormData();
         formData.append('file', file);
@@ -231,6 +252,14 @@ export const progressApi = {
 
 // Chat API
 export const chatApi = {
+    // Search across documents
+    searchDocuments: async (query: string, documentId?: string, mode: string = 'hybrid', topK: number = 5) => {
+        const params: any = { q: query, mode, top_k: topK };
+        if (documentId) params.document_id = documentId;
+        const response = await api.get('/chat/search', { params });
+        return response.data;
+    },
+
     sendMessage: async (data: { message: string; document_id?: string; conversation_history?: any[] }) => {
         const response = await api.post('/chat/message', data);
         return response.data;
