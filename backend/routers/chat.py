@@ -11,7 +11,7 @@ from database.schemas import (
     ChatRequest, ChatResponse, ExplainConceptRequest, ExplainConceptResponse
 )
 from utils.security import get_current_user
-from services.ai_agents import AIAgentOrchestrator
+from services.ai_agents import AIAgentOrchestrator, get_orchestrator
 
 router = APIRouter()
 
@@ -87,11 +87,14 @@ async def chat_message(
             if document.content_text:
                 context = document.content_text[:10000]
 
-    orchestrator = AIAgentOrchestrator(user_id=str(current_user.id))
+    # Convert Pydantic objects to plain dicts for the orchestrator
+    history_dicts = [{"role": m.role, "content": m.content} for m in request.conversation_history]
+
+    orchestrator = get_orchestrator(user_id=str(current_user.id))
     response = await orchestrator.chat(
         message=request.message,
         context=context,
-        history=request.conversation_history,
+        history=history_dicts,
         use_rag=True,
         document_filters=document_filters,
         search_mode=search_mode
@@ -115,6 +118,10 @@ async def chat_stream(
     context = ""
     document_filters = None
 
+    # ── All DB work must complete HERE, before returning StreamingResponse ──
+    # The get_db dependency will close the session when this function returns,
+    # which happens immediately for streaming endpoints. Any DB access inside
+    # the generator would fail because the session is already closed.
     if request.document_id:
         result = await db.execute(
             select(Document)
@@ -126,16 +133,23 @@ async def chat_stream(
             if document.content_text:
                 context = document.content_text[:10000]
 
-    orchestrator = AIAgentOrchestrator(user_id=str(current_user.id))
+    # ── Capture all data from request BEFORE returning StreamingResponse ──
+    # Pydantic model objects may be garbage-collected or become invalid after
+    # the endpoint function returns. Convert to plain dicts/strings now.
+    message = request.message
+    history_dicts = [{"role": m.role, "content": m.content} for m in request.conversation_history]
+    stream_search_mode = search_mode
+
+    orchestrator = get_orchestrator(user_id=str(current_user.id))
 
     return StreamingResponse(
         orchestrator.chat_stream(
-            message=request.message,
+            message=message,
             context=context,
-            history=request.conversation_history,
+            history=history_dicts,
             use_rag=True,
             document_filters=document_filters,
-            search_mode=search_mode
+            search_mode=stream_search_mode
         ),
         media_type="text/event-stream"
     )
@@ -159,7 +173,7 @@ async def explain_concept(
         if document and document.content_text:
             context = document.content_text[:10000]
 
-    orchestrator = AIAgentOrchestrator(user_id=str(current_user.id))
+    orchestrator = get_orchestrator(user_id=str(current_user.id))
     explanation = await orchestrator.explain_concept(
         concept=request.concept,
         level=request.level,
@@ -183,7 +197,7 @@ async def suggest_flashcards(
     current_user: User = Depends(get_current_user)
 ):
     """Suggest flashcards from selected text."""
-    orchestrator = AIAgentOrchestrator()
+    orchestrator = get_orchestrator()
     suggestions = await orchestrator.suggest_flashcards(text, count)
     return {"suggestions": suggestions}
 
@@ -194,6 +208,6 @@ async def summarize_text(
     current_user: User = Depends(get_current_user)
 ):
     """Summarize text content."""
-    orchestrator = AIAgentOrchestrator()
+    orchestrator = get_orchestrator()
     summary = await orchestrator.summarize(text)
     return {"summary": summary}
