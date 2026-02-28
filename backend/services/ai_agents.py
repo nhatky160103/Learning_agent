@@ -1,5 +1,6 @@
 import json
 import re
+import logging
 from typing import List, Dict, Optional
 from config import settings
 from utils.prompts import (
@@ -7,6 +8,42 @@ from utils.prompts import (
     CHAT_SYSTEM_PROMPT, FLASHCARD_GENERATION_PROMPT,
     DOCUMENT_REVIEW_PROMPT, CHAT_SYSTEM_PROMPT_WITH_CITATIONS
 )
+
+
+logger = logging.getLogger(__name__)
+
+
+def _friendly_error_message(exc: Exception) -> str:
+    """Convert raw API exceptions into clean, user-friendly messages."""
+    msg = str(exc)
+
+    # Rate-limit / quota errors
+    if "429" in msg or "quota" in msg.lower() or "rate" in msg.lower():
+        # Try to extract retry delay
+        retry_match = re.search(r'retry\s*(?:in|after)?\s*([\d.]+)\s*s', msg, re.IGNORECASE)
+        if retry_match:
+            seconds = int(float(retry_match.group(1)))
+            return f"⏳ API quota exceeded. Please wait ~{seconds}s and try again."
+        return "⏳ API quota exceeded. Please wait a moment and try again."
+
+    # Auth errors
+    if "401" in msg or "403" in msg or "api key" in msg.lower():
+        return "🔑 API authentication failed. Please check your API key in settings."
+
+    # Server errors
+    if "500" in msg or "502" in msg or "503" in msg:
+        return "🔧 AI service is temporarily unavailable. Please try again shortly."
+
+    # Timeout
+    if "timeout" in msg.lower() or "timed out" in msg.lower():
+        return "⏱️ Request timed out. Please try again with a shorter message."
+
+    # Connection errors
+    if "connection" in msg.lower():
+        return "🌐 Connection error. Please check your internet and try again."
+
+    # Generic fallback — keep it short
+    return "❌ Something went wrong. Please try again."
 
 
 class AIAgentOrchestrator:
@@ -126,8 +163,9 @@ class AIAgentOrchestrator:
                 "suggested_actions": suggested_actions
             }
         except Exception as e:
+            logger.error(f"Chat error: {e}")
             return {
-                "response": f"Error: {str(e)}. Please try again.",
+                "response": _friendly_error_message(e),
                 "sources": None,
                 "suggested_actions": None
             }
@@ -182,7 +220,8 @@ class AIAgentOrchestrator:
                 if chunk.content:
                     yield json.dumps({"type": "token", "content": chunk.content}) + "\n"
         except Exception as e:
-            yield json.dumps({"type": "error", "content": f"Error: {str(e)}"}) + "\n"
+            logger.error(f"Chat stream error: {e}")
+            yield json.dumps({"type": "error", "content": _friendly_error_message(e)}) + "\n"
 
     # ─── Document Review ──────────────────────────────────────────────────────
 
@@ -579,3 +618,18 @@ Output only valid JSON."""
             actions.append("See related concepts")
 
         return actions if actions else None
+
+
+# ─── Cached factory ──────────────────────────────────────────────────────────
+_orchestrator_cache: Dict[str, AIAgentOrchestrator] = {}
+
+
+def get_orchestrator(user_id: str = None) -> AIAgentOrchestrator:
+    """
+    Get or create an AIAgentOrchestrator, caching the LLM/vector store
+    so they are not re-initialized on every request.
+    """
+    cache_key = user_id or "__default__"
+    if cache_key not in _orchestrator_cache:
+        _orchestrator_cache[cache_key] = AIAgentOrchestrator(user_id=user_id)
+    return _orchestrator_cache[cache_key]
