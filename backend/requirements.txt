@@ -31,9 +31,11 @@ langchain-google-genai>=0.0.6
 langchain-community>=0.0.14
 openai>=1.10.0
 google-generativeai>=0.3.2
-chromadb==1.4.1
 sentence-transformers>=2.3.1
 
+# Vector Store - Elasticsearch (thay thế ChromaDB)
+# elasticsearch[async] bao gồm cả AsyncElasticsearch và async_bulk helper
+elasticsearch[async]>=8.13.0
 
 # Utilities
 httpx==0.28.1

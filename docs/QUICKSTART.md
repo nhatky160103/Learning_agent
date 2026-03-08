@@ -27,7 +27,7 @@ cp .env.example .env
 ### 2. Start All Services
 
 ```bash
-# Start all services (PostgreSQL, ChromaDB, Backend, Frontend)
+# Start all services (PostgreSQL, Elasticsearch, Backend, Frontend)
 docker-compose up -d
 
 # View logs
@@ -45,7 +45,7 @@ docker-compose down
 | Backend API | http://localhost:8001 |
 | API Docs (Swagger) | http://localhost:8001/docs |
 | PostgreSQL | `localhost:5432` |
-| ChromaDB | http://localhost:8000 |
+| Elasticsearch | http://localhost:9200 |
 
 ### Docker Commands Reference
 
@@ -92,8 +92,8 @@ cp .env.example .env
 ### 2. Start Infrastructure
 
 ```bash
-# Start PostgreSQL and ChromaDB via Docker
-docker-compose up -d postgres chromadb
+# Start PostgreSQL and Elasticsearch via Docker
+docker-compose up -d postgres elasticsearch
 ```
 
 ### 3. Start Backend
@@ -133,10 +133,13 @@ POSTGRES_PASSWORD=learning_pass
 POSTGRES_DB=learning_assistant
 DATABASE_URL=postgresql+asyncpg://learning_user:learning_pass@localhost:5432/learning_assistant
 
-# === ChromaDB (Vector Store) ===
-CHROMA_HOST=localhost
-CHROMA_PORT=8000
-CHROMA_COLLECTION=learning_documents
+# === Elasticsearch (Vector Store) ===
+ES_HOST=localhost
+ES_PORT=9200
+ES_USERNAME=elastic
+ES_PASSWORD=your-elastic-password
+ES_CA_CERT=/path/to/http_ca.crt   # chỉ cần khi dùng TLS (local WSL2)
+ES_INDEX_NAME=learning_documents
 
 # === JWT Authentication ===
 JWT_SECRET_KEY=your-super-secret-key        # Change in production!
@@ -161,7 +164,9 @@ RAILWAY_TOKEN=your-railway-token
 ```
 
 > [!IMPORTANT]
-> When using Docker Compose, database hostnames change from `localhost` to the service names (e.g., `postgres`, `chromadb`). The `docker-compose.yml` handles this automatically via environment overrides.
+> When using Docker Compose, database hostnames change from `localhost` to the service names (e.g., `postgres`, `elasticsearch`). The `docker-compose.yml` handles this automatically via environment overrides.
+> 
+> **Elasticsearch TLS note:** Docker Compose chạy ES với `xpack.security.http.ssl.enabled=false` (không TLS) để đơn giản hóa dev. Khi chạy local (WSL2) thì ES dùng TLS — cần set `ES_CA_CERT` trỏ đến `http_ca.crt`.
 
 ---
 

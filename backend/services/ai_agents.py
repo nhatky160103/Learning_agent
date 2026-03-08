@@ -272,25 +272,25 @@ class AIAgentOrchestrator:
 
         prompt = f"""Analyze this document and identify learning gaps.
 
-Document content:
-{content[:8000]}
+        Document content:
+        {content[:8000]}
 
-User's weak topics: {weak_topics_str}
+        User's weak topics: {weak_topics_str}
 
-Provide analysis in JSON format:
-{{
-  "topics_covered": ["topic1", "topic2"],
-  "topics_missing": ["missing topic that should be here"],
-  "depth_assessment": {{
-    "shallow_topics": ["topics only briefly mentioned"],
-    "deep_topics": ["topics covered in depth"]
-  }},
-  "prerequisite_knowledge": ["what you need to know before this"],
-  "follow_up_topics": ["what to study after this"],
-  "personalized_focus": ["topics to focus on based on user weaknesses"]
-}}
+        Provide analysis in JSON format:
+        {{
+        "topics_covered": ["topic1", "topic2"],
+        "topics_missing": ["missing topic that should be here"],
+        "depth_assessment": {{
+            "shallow_topics": ["topics only briefly mentioned"],
+            "deep_topics": ["topics covered in depth"]
+        }},
+        "prerequisite_knowledge": ["what you need to know before this"],
+        "follow_up_topics": ["what to study after this"],
+        "personalized_focus": ["topics to focus on based on user weaknesses"]
+        }}
 
-Output only valid JSON."""
+        Output only valid JSON."""
 
         try:
             response = await self.llm.ainvoke(prompt)
@@ -312,33 +312,33 @@ Output only valid JSON."""
 
         prompt = f"""Create a comprehensive study guide from this document.
 
-Title: {title or "Document"}
-Content:
-{content[:10000]}
+        Title: {title or "Document"}
+        Content:
+        {content[:10000]}
 
-Output a study guide in JSON format:
-{{
-  "title": "Study Guide: {title}",
-  "outline": [
-    {{
-      "section": "Section name",
-      "key_points": ["point 1", "point 2"],
-      "summary": "One sentence summary"
-    }}
-  ],
-  "must_know_facts": ["Critical fact 1", "Critical fact 2"],
-  "memory_aids": [
-    {{
-      "concept": "concept name",
-      "mnemonic": "memory trick or acronym"
-    }}
-  ],
-  "common_exam_questions": ["Typical question 1", "Typical question 2"],
-  "quick_review_checklist": ["Can I explain X?", "Do I understand Y?"],
-  "estimated_mastery_time_hours": 2
-}}
+        Output a study guide in JSON format:
+        {{
+        "title": "Study Guide: {title}",
+        "outline": [
+            {{
+            "section": "Section name",
+            "key_points": ["point 1", "point 2"],
+            "summary": "One sentence summary"
+            }}
+        ],
+        "must_know_facts": ["Critical fact 1", "Critical fact 2"],
+        "memory_aids": [
+            {{
+            "concept": "concept name",
+            "mnemonic": "memory trick or acronym"
+            }}
+        ],
+        "common_exam_questions": ["Typical question 1", "Typical question 2"],
+        "quick_review_checklist": ["Can I explain X?", "Do I understand Y?"],
+        "estimated_mastery_time_hours": 2
+        }}
 
-Output only valid JSON."""
+        Output only valid JSON."""
 
         try:
             response = await self.llm.ainvoke(prompt)
@@ -442,21 +442,21 @@ Output only valid JSON."""
             return {"main_topics": [], "key_terms": [], "difficulty_level": "unknown"}
 
         prompt = f"""Analyze this content and extract:
-1. Main topics covered (3-5 topics)
-2. Key terms and concepts (10-15 terms)
-3. Difficulty level (beginner/intermediate/advanced)
+        1. Main topics covered (3-5 topics)
+        2. Key terms and concepts (10-15 terms)
+        3. Difficulty level (beginner/intermediate/advanced)
 
-Content:
-{content[:8000]}
+        Content:
+        {content[:8000]}
 
-Output format (JSON):
-{{
-  "main_topics": ["topic1", "topic2"],
-  "key_terms": ["term1", "term2"],
-  "difficulty_level": "intermediate"
-}}
+        Output format (JSON):
+        {{
+        "main_topics": ["topic1", "topic2"],
+        "key_terms": ["term1", "term2"],
+        "difficulty_level": "intermediate"
+        }}
 
-Output only valid JSON."""
+        Output only valid JSON."""
 
         try:
             response = await self.llm.ainvoke(prompt)

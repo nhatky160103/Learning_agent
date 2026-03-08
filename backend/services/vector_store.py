@@ -1,65 +1,113 @@
 """
-Vector Store Service - Nâng cấp với Hybrid Search & Reranking
+Vector Store Service - Elasticsearch Implementation
+Hybrid Search: native BM25 + kNN (HNSW) + native RRF
+với Cross-encoder Reranking và MMR diversity
 """
 
 import logging
 import re
-from typing import List, Dict, Optional, Any, Tuple
+from typing import List, Dict, Optional, Any
 from datetime import datetime
-import chromadb
-from sentence_transformers import SentenceTransformer, CrossEncoder
+
 import numpy as np
+from elasticsearch import AsyncElasticsearch, NotFoundError
+from elasticsearch.helpers import async_bulk
+from sentence_transformers import SentenceTransformer, CrossEncoder
 
 from config import settings
 
 logger = logging.getLogger(__name__)
 
+# Số chiều của embedding model all-MiniLM-L6-v2
+EMBEDDING_DIMS = 384
+
+# Mapping cho Elasticsearch index
+INDEX_MAPPINGS = {
+    "mappings": {
+        "properties": {
+            "document_id":  {"type": "keyword"},
+            "user_id":      {"type": "keyword"},
+            "chunk_index":  {"type": "integer"},
+            "chunk_count":  {"type": "integer"},
+            "text_length":  {"type": "integer"},
+            "created_at":   {"type": "date"},
+            # Full-text field - ES dùng BM25 thật để tìm kiếm
+            "text": {
+                "type": "text",
+                "analyzer": "standard"
+            },
+            # Dense vector field - ES dùng HNSW để kNN search
+            "embedding": {
+                "type": "dense_vector",
+                "dims": EMBEDDING_DIMS,
+                "index": True,
+                "similarity": "cosine",
+                "index_options": {
+                    "type": "hnsw",
+                    "m": 16,
+                    "ef_construction": 100
+                }
+            }
+        }
+    },
+    "settings": {
+        "number_of_shards": 1,
+        "number_of_replicas": 0
+    }
+}
+
 
 class VectorStore:
     """
-    Vector store nâng cấp:
-    - Hybrid search: semantic + BM25 keyword
+    Vector store dùng Elasticsearch:
+    - kNN semantic search (HNSW index, cosine similarity)
+    - BM25 keyword search 
+    - Hybrid search với native RRF (Reciprocal Rank Fusion)
     - Cross-encoder reranking
-    - Query expansion
     - MMR (Maximal Marginal Relevance) để giảm trùng lặp
-    - Per-chunk metadata
+    - Multi-query retrieval
     """
 
     def __init__(self):
-        self.client = None
-        self.collection = None
-        self.embedding_model = None
-        self.reranker = None
-        self._init_client()
+        self.es: Optional[AsyncElasticsearch] = None
+        self.index_name: str = ""
+        self.embedding_model: Optional[SentenceTransformer] = None
+        self.reranker: Optional[CrossEncoder] = None
+        self._index_ready: bool = False
+
+        self._init_es_client()
         self._init_embedding_model()
         self._init_reranker()
 
-    def _init_client(self):
+    def _init_es_client(self):
+        """Khởi tạo AsyncElasticsearch client (kết nối lazy - thực sự kết nối khi gọi request đầu tiên)."""
         try:
-            self.client = chromadb.HttpClient(
-                host=settings.chroma_host,
-                port=settings.chroma_port
-            )
-            self.client.heartbeat()
-            logger.info(f"Connected to ChromaDB at {settings.chroma_host}:{settings.chroma_port}")
+            self.index_name = settings.es_index_name
 
-            collection_name = getattr(settings, 'chroma_collection', 'learning_documents')
-            try:
-                self.collection = self.client.get_collection(name=collection_name)
-                logger.info(f"Connected to existing collection: {collection_name}")
-            except Exception:
-                self.collection = self.client.create_collection(
-                    name=collection_name,
-                    metadata={"hnsw:space": "cosine"}
-                )
-                logger.info(f"Created new collection: {collection_name}")
+            # Build connection params
+            # Dùng https nếu có ca_cert (local WSL2), http nếu không có (Docker/Railway)
+            scheme = "https" if settings.es_ca_cert else "http"
+
+            conn_kwargs = {
+                "hosts": [f"{scheme}://{settings.es_host}:{settings.es_port}"],
+                "basic_auth": (settings.es_username, settings.es_password),
+                "verify_certs": bool(settings.es_ca_cert),
+            }
+
+            if settings.es_ca_cert:
+                conn_kwargs["ca_certs"] = settings.es_ca_cert
+
+            self.es = AsyncElasticsearch(**conn_kwargs)
+            logger.info(f"Elasticsearch client initialized → {settings.es_host}:{settings.es_port}, index='{self.index_name}'")
+
         except Exception as e:
-            logger.error(f"Failed to initialize ChromaDB: {e}")
+            logger.error(f"Failed to initialize Elasticsearch client: {e}")
             raise
 
     def _init_embedding_model(self):
+        """Load SentenceTransformer embedding model."""
         try:
-            model_name = getattr(settings, 'embedding_model', 'sentence-transformers/all-MiniLM-L6-v2')
+            model_name = getattr(settings, "embedding_model", "sentence-transformers/all-MiniLM-L6-v2")
             self.embedding_model = SentenceTransformer(model_name)
             logger.info(f"Loaded embedding model: {model_name}")
         except Exception as e:
@@ -67,14 +115,34 @@ class VectorStore:
             raise
 
     def _init_reranker(self):
-        """Load cross-encoder reranker nếu có."""
+        """Load cross-encoder reranker (optional)."""
         try:
-            reranker_model = getattr(settings, 'reranker_model', 'cross-encoder/ms-marco-MiniLM-L-6-v2')
+            reranker_model = getattr(settings, "reranker_model", "cross-encoder/ms-marco-MiniLM-L-6-v2")
             self.reranker = CrossEncoder(reranker_model)
             logger.info(f"Loaded reranker: {reranker_model}")
         except Exception as e:
             logger.warning(f"Reranker not available (optional): {e}")
             self.reranker = None
+
+    # ─── Index Management ─────────────────────────────────────────────────────
+
+    async def _ensure_index(self):
+        """Tạo index nếu chưa tồn tại."""
+        if self._index_ready:
+            return
+        try:
+            exists = await self.es.indices.exists(index=self.index_name)
+            if not exists:
+                await self.es.indices.create(index=self.index_name, body=INDEX_MAPPINGS)
+                logger.info(f"Created Elasticsearch index: '{self.index_name}'")
+            else:
+                logger.info(f"Connected to existing index: '{self.index_name}'")
+            self._index_ready = True
+        except Exception as e:
+            logger.error(f"Failed to ensure index: {e}")
+            raise
+
+    # ─── Embeddings ───────────────────────────────────────────────────────────
 
     def generate_embeddings(self, texts: List[str]) -> List[List[float]]:
         embeddings = self.embedding_model.encode(
@@ -85,6 +153,8 @@ class VectorStore:
         )
         return embeddings.tolist()
 
+    # ─── CRUD Operations ──────────────────────────────────────────────────────
+
     async def add_document_chunks(
         self,
         document_id: str,
@@ -92,46 +162,109 @@ class VectorStore:
         metadata: Dict[str, Any],
         per_chunk_metadata: List[Dict] = None
     ) -> int:
-        """Thêm chunks với per-chunk metadata."""
+        """
+        Index document chunks vào Elasticsearch.
+        Dùng bulk API để tăng hiệu năng.
+        """
         if not chunks:
             return 0
 
+        await self._ensure_index()
+
         try:
-            chunk_ids = [f"{document_id}_chunk_{i}" for i in range(len(chunks))]
-
-            chunk_metadata = []
-            for i, chunk in enumerate(chunks):
-                base_meta = per_chunk_metadata[i] if per_chunk_metadata else metadata
-                meta = {
-                    "document_id": document_id,
-                    "chunk_index": i,
-                    "chunk_count": len(chunks),
-                    "text_length": len(chunk),
-                    "created_at": datetime.utcnow().isoformat(),
-                    **{k: str(v) if v is not None else "" for k, v in base_meta.items()}
-                }
-                chunk_metadata.append(meta)
-
             logger.info(f"Generating embeddings for {len(chunks)} chunks...")
             embeddings = self.generate_embeddings(chunks)
 
-            batch_size = 100
-            total_added = 0
-            for i in range(0, len(chunks), batch_size):
-                batch_end = min(i + batch_size, len(chunks))
-                self.collection.add(
-                    ids=chunk_ids[i:batch_end],
-                    embeddings=embeddings[i:batch_end],
-                    documents=chunks[i:batch_end],
-                    metadatas=chunk_metadata[i:batch_end]
-                )
-                total_added += (batch_end - i)
+            now = datetime.utcnow().isoformat()
 
-            logger.info(f"Added {total_added} chunks for document {document_id}")
-            return total_added
+            # Chuẩn bị bulk actions
+            actions = []
+            for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
+                base_meta = per_chunk_metadata[i] if per_chunk_metadata else metadata
+                doc = {
+                    "_index": self.index_name,
+                    "_id": f"{document_id}_chunk_{i}",
+                    "_source": {
+                        "document_id": document_id,
+                        "chunk_index": i,
+                        "chunk_count": len(chunks),
+                        "text": chunk,
+                        "text_length": len(chunk),
+                        "created_at": now,
+                        "embedding": embedding,
+                        **{k: str(v) if v is not None else "" for k, v in base_meta.items()}
+                    }
+                }
+                actions.append(doc)
+
+            # Bulk index
+            success, errors = await async_bulk(self.es, actions, chunk_size=100, raise_on_error=False)
+
+            if errors:
+                logger.warning(f"Bulk index had {len(errors)} errors for document {document_id}")
+
+            logger.info(f"Indexed {success} chunks for document {document_id}")
+            return success
+
         except Exception as e:
             logger.error(f"Error adding document chunks: {e}")
             raise
+
+    async def delete_document(self, document_id: str) -> bool:
+        """Xóa tất cả chunks của một document."""
+        await self._ensure_index()
+        try:
+            response = await self.es.delete_by_query(
+                index=self.index_name,
+                body={"query": {"term": {"document_id": document_id}}},
+                refresh=True
+            )
+            deleted = response.get("deleted", 0)
+            if deleted > 0:
+                logger.info(f"Deleted {deleted} chunks for document {document_id}")
+                return True
+            return False
+        except Exception as e:
+            logger.error(f"Error deleting document: {e}")
+            raise
+
+    async def update_document_chunks(
+        self,
+        document_id: str,
+        chunks: List[str],
+        metadata: Dict[str, Any]
+    ) -> int:
+        """Xóa cũ rồi index lại."""
+        await self.delete_document(document_id)
+        return await self.add_document_chunks(document_id, chunks, metadata)
+
+    async def get_document_chunks(self, document_id: str) -> List[Dict[str, Any]]:
+        """Lấy tất cả chunks của một document theo thứ tự."""
+        await self._ensure_index()
+        try:
+            response = await self.es.search(
+                index=self.index_name,
+                body={
+                    "query": {"term": {"document_id": document_id}},
+                    "sort": [{"chunk_index": "asc"}],
+                    "size": 10000,
+                    "_source": {"excludes": ["embedding"]}
+                }
+            )
+            chunks = []
+            for hit in response["hits"]["hits"]:
+                src = hit["_source"]
+                chunks.append({
+                    "chunk_id": hit["_id"],
+                    "text": src.get("text", ""),
+                    "metadata": {k: v for k, v in src.items() if k != "text"}
+                })
+            return chunks
+        except Exception as e:
+            logger.error(f"Error retrieving document chunks: {e}")
+            raise
+
+    # ─── Search Operations ────────────────────────────────────────────────────
 
     async def search(
         self,
@@ -144,55 +277,51 @@ class VectorStore:
         mmr_diversity: float = 0.3
     ) -> List[Dict[str, Any]]:
         """
-        Semantic search với optional reranking và MMR.
+        Semantic search thuần (kNN với HNSW index).
+        Dùng khi cần tốc độ cao, không cần hybrid.
         """
+        await self._ensure_index()
         try:
-            # Lấy nhiều hơn để rerank
-            fetch_k = min(top_k * 3, 20) if (use_reranking and self.reranker) else top_k
+            fetch_k = min(top_k * 3, 50) if (use_reranking and self.reranker) else top_k
+            query_vector = self.generate_embeddings([query])[0]
 
-            query_embedding = self.generate_embeddings([query])[0]
-            where_clause = filters if filters else None
+            knn_body = {
+                "field": "embedding",
+                "query_vector": query_vector,
+                "k": fetch_k,
+                "num_candidates": fetch_k * 5,
+            }
+            filter_clauses = self._build_filter(filters)
+            if filter_clauses:
+                knn_body["filter"] = {"bool": {"must": filter_clauses}}
 
-            results = self.collection.query(
-                query_embeddings=[query_embedding],
-                n_results=fetch_k,
-                where=where_clause,
-                include=["documents", "metadatas", "distances"]
+            response = await self.es.search(
+                index=self.index_name,
+                body={
+                    "knn": knn_body,
+                    "size": fetch_k,
+                    "_source": {"excludes": ["embedding"]}
+                }
             )
 
-            if not results or not results['ids'] or not results['ids'][0]:
-                return []
+            results = self._parse_hits(response["hits"]["hits"], score_field="_score")
 
-            formatted = []
-            for i in range(len(results['ids'][0])):
-                distance = results['distances'][0][i]
-                similarity = 1 - distance
-
-                if similarity < similarity_threshold:
-                    continue
-
-                formatted.append({
-                    "chunk_id": results['ids'][0][i],
-                    "text": results['documents'][0][i],
-                    "content": results['documents'][0][i],
-                    "metadata": results['metadatas'][0][i],
-                    "similarity_score": round(similarity, 4),
-                    "score": round(similarity, 4),
-                    "distance": round(distance, 4)
-                })
+            # Filter theo similarity threshold
+            if similarity_threshold > 0:
+                results = [r for r in results if r["similarity_score"] >= similarity_threshold]
 
             # Reranking với cross-encoder
-            if use_reranking and self.reranker and len(formatted) > top_k:
-                formatted = self._rerank(query, formatted, top_k)
-            
-            # MMR để đa dạng hóa kết quả
-            if use_mmr and len(formatted) > top_k:
-                formatted = self._mmr_select(query, formatted, top_k, mmr_diversity)
+            if use_reranking and self.reranker and len(results) > top_k:
+                results = self._rerank(query, results, top_k)
 
-            return formatted[:top_k]
+            # MMR để đa dạng hóa kết quả
+            if use_mmr and len(results) > top_k:
+                results = self._mmr_select(query, results, top_k, mmr_diversity)
+
+            return results[:top_k]
 
         except Exception as e:
-            logger.error(f"Error performing search: {e}")
+            logger.error(f"Error performing kNN search: {e}")
             raise
 
     async def hybrid_search(
@@ -205,40 +334,81 @@ class VectorStore:
         use_reranking: bool = True
     ) -> List[Dict[str, Any]]:
         """
-        Hybrid search: kết hợp semantic search và BM25 keyword search.
-        semantic_weight + keyword_weight = 1.0
+        Hybrid search dùng ES native RRF (Reciprocal Rank Fusion).
+        Kết hợp BM25 thật + kNN vector search.
+
+        Đây là điểm mạnh nhất của Elasticsearch so với ChromaDB:
+        - BM25 native (không phải fake keyword search)
+        - RRF native (không cần tự implement)
+        - Chạy hoàn toàn trong ES, không cần Python merge
         """
+        await self._ensure_index()
         try:
-            fetch_k = min(top_k * 4, 30)
+            query_vector = self.generate_embeddings([query])[0]
+            filter_clauses = self._build_filter(filters)
+            rank_window = min(top_k * 6, 100)
 
-            # 1. Semantic search
-            semantic_results = await self.search(
-                query=query,
-                top_k=fetch_k,
-                filters=filters,
-                similarity_threshold=0.0,
-                use_reranking=False,
-                use_mmr=False
+            fetch_size = min(top_k * 3, 50) if (use_reranking and self.reranker) else top_k
+
+            # 1. BM25 search
+            bm25_body = {
+                "query": self._build_bm25_query(query, filter_clauses),
+                "size": rank_window,
+                "_source": {"excludes": ["embedding"]}
+            }
+            bm25_resp = await self.es.search(index=self.index_name, body=bm25_body)
+
+            # 2. kNN search
+            knn_body_inner = {
+                "field": "embedding",
+                "query_vector": query_vector,
+                "k": rank_window,
+                "num_candidates": rank_window * 3,
+            }
+            if filter_clauses:
+                knn_body_inner["filter"] = {"bool": {"must": filter_clauses}}
+            knn_resp = await self.es.search(
+                index=self.index_name,
+                body={"knn": knn_body_inner, "size": rank_window, "_source": {"excludes": ["embedding"]}}
             )
 
-            # 2. BM25 keyword search (approximate với ChromaDB where contains)
-            keyword_results = await self._keyword_search(query, fetch_k, filters)
+            # 3. Manual RRF merge
+            rank_constant = 60
+            rrf_scores: Dict[str, float] = {}
+            rrf_docs: Dict[str, Dict] = {}
 
-            # 3. Reciprocal Rank Fusion
-            fused = self._reciprocal_rank_fusion(
-                [semantic_results, keyword_results],
-                [semantic_weight, keyword_weight]
-            )
+            for rank, hit in enumerate(bm25_resp["hits"]["hits"], start=1):
+                doc_id = hit["_id"]
+                rrf_scores[doc_id] = rrf_scores.get(doc_id, 0) + 1 / (rank_constant + rank)
+                rrf_docs[doc_id] = hit
 
-            # 4. Rerank top results
-            if use_reranking and self.reranker and len(fused) > top_k:
-                fused = self._rerank(query, fused, top_k)
+            for rank, hit in enumerate(knn_resp["hits"]["hits"], start=1):
+                doc_id = hit["_id"]
+                rrf_scores[doc_id] = rrf_scores.get(doc_id, 0) + 1 / (rank_constant + rank)
+                if doc_id not in rrf_docs:
+                    rrf_docs[doc_id] = hit
 
-            return fused[:top_k]
+            # Sort by RRF score
+            sorted_ids = sorted(rrf_scores, key=lambda x: rrf_scores[x], reverse=True)
+            merged_hits = []
+            for doc_id in sorted_ids[:fetch_size]:
+                hit = rrf_docs[doc_id]
+                hit["_score"] = rrf_scores[doc_id]
+                merged_hits.append(hit)
+
+            response = {"hits": {"hits": merged_hits}}
+
+            results = self._parse_hits(response["hits"]["hits"], score_field="_score")
+
+            # Rerank top results với cross-encoder
+            if use_reranking and self.reranker and len(results) > top_k:
+                results = self._rerank(query, results, top_k)
+
+            return results[:top_k]
 
         except Exception as e:
             logger.error(f"Hybrid search error: {e}")
-            # Fallback về semantic search
+            logger.warning("Falling back to semantic search")
             return await self.search(query, top_k, filters)
 
     async def multi_query_search(
@@ -248,16 +418,19 @@ class VectorStore:
         filters: Optional[Dict[str, Any]] = None
     ) -> List[Dict[str, Any]]:
         """
-        Multi-query retrieval: generate nhiều biến thể query, merge kết quả.
+        Multi-query retrieval: tạo nhiều query variations, merge kết quả.
         Giúp tìm được thông tin mà single query bỏ sót.
         """
-        # Tạo query variations đơn giản (không cần LLM)
+        await self._ensure_index()
+
         query_variations = self._generate_query_variations(query)
 
-        all_results = {}
+        all_results: Dict[str, Dict] = {}
         for q in query_variations:
             try:
-                results = await self.search(q, top_k=top_k, filters=filters, use_reranking=False)
+                results = await self.hybrid_search(
+                    q, top_k=top_k, filters=filters, use_reranking=False
+                )
                 for r in results:
                     chunk_id = r["chunk_id"]
                     if chunk_id not in all_results:
@@ -265,8 +438,7 @@ class VectorStore:
                     else:
                         # Boost score nếu xuất hiện ở nhiều queries
                         all_results[chunk_id]["score"] = min(
-                            1.0,
-                            all_results[chunk_id]["score"] + 0.05
+                            1.0, all_results[chunk_id]["score"] + 0.05
                         )
             except Exception:
                 continue
@@ -300,75 +472,78 @@ class VectorStore:
     ) -> List[Dict[str, Any]]:
         results = await self.search(chunk_text, top_k=top_k * 2)
         if exclude_document_id:
-            results = [r for r in results if r['metadata'].get('document_id') != exclude_document_id]
+            results = [r for r in results if r["metadata"].get("document_id") != exclude_document_id]
         return results[:top_k]
 
-    async def delete_document(self, document_id: str) -> bool:
-        try:
-            results = self.collection.get(
-                where={"document_id": document_id},
-                include=[]
-            )
-            if results and results['ids']:
-                self.collection.delete(ids=results['ids'])
-                logger.info(f"Deleted {len(results['ids'])} chunks for document {document_id}")
-                return True
-            return False
-        except Exception as e:
-            logger.error(f"Error deleting document: {e}")
-            raise
-
-    async def get_document_chunks(self, document_id: str) -> List[Dict[str, Any]]:
-        try:
-            results = self.collection.get(
-                where={"document_id": document_id},
-                include=["documents", "metadatas"]
-            )
-            chunks = []
-            if results and results['ids']:
-                for i in range(len(results['ids'])):
-                    chunks.append({
-                        "chunk_id": results['ids'][i],
-                        "text": results['documents'][i],
-                        "metadata": results['metadatas'][i]
-                    })
-            chunks.sort(key=lambda x: x['metadata'].get('chunk_index', 0))
-            return chunks
-        except Exception as e:
-            logger.error(f"Error retrieving document chunks: {e}")
-            raise
-
     def get_collection_stats(self) -> Dict[str, Any]:
+        """Trả về thống kê cơ bản (sync)."""
+        return {
+            "index_name": self.index_name,
+            "es_host": f"{settings.es_host}:{settings.es_port}",
+            "embedding_model": getattr(settings, "embedding_model", "all-MiniLM-L6-v2"),
+            "reranker_available": self.reranker is not None
+        }
+
+    async def get_index_stats(self) -> Dict[str, Any]:
+        """Lấy thống kê chi tiết từ ES (async)."""
+        await self._ensure_index()
         try:
-            count = self.collection.count()
+            stats = await self.es.indices.stats(index=self.index_name)
+            count_resp = await self.es.count(index=self.index_name)
             return {
-                "total_chunks": count,
-                "collection_name": self.collection.name,
-                "embedding_model": getattr(settings, 'embedding_model', 'all-MiniLM-L6-v2'),
+                "total_chunks": count_resp["count"],
+                "index_name": self.index_name,
+                "index_size_bytes": stats["indices"][self.index_name]["total"]["store"]["size_in_bytes"],
+                "embedding_model": getattr(settings, "embedding_model", "all-MiniLM-L6-v2"),
                 "reranker_available": self.reranker is not None
             }
         except Exception as e:
             return {"error": str(e)}
 
-    async def update_document_chunks(
-        self,
-        document_id: str,
-        chunks: List[str],
-        metadata: Dict[str, Any]
-    ) -> int:
-        await self.delete_document(document_id)
-        return await self.add_document_chunks(document_id, chunks, metadata)
+    # ─── Private Helpers ──────────────────────────────────────────────────────
 
-    # ─── Private helpers ─────────────────────────────────────────────────────
+    def _build_filter(self, filters: Optional[Dict[str, Any]]) -> List[Dict]:
+        """Convert filters dict → ES term clauses."""
+        if not filters:
+            return []
+        return [{"term": {field: str(value)}} for field, value in filters.items()]
+
+    def _build_bm25_query(self, query: str, filter_clauses: List[Dict]) -> Dict:
+        """Xây dựng BM25 bool query với optional filter."""
+        if filter_clauses:
+            return {
+                "bool": {
+                    "must": [{"match": {"text": {"query": query}}}],
+                    "filter": filter_clauses
+                }
+            }
+        return {"match": {"text": {"query": query}}}
+
+    def _parse_hits(self, hits: List[Dict], score_field: str = "_score") -> List[Dict[str, Any]]:
+        """Parse ES hits thành format thống nhất."""
+        results = []
+        for hit in hits:
+            src = hit.get("_source", {})
+            score = hit.get(score_field, 0.0) or 0.0
+            results.append({
+                "chunk_id": hit["_id"],
+                "text": src.get("text", ""),
+                "content": src.get("text", ""),
+                "metadata": {k: v for k, v in src.items() if k != "text"},
+                "similarity_score": round(float(score), 4),
+                "score": round(float(score), 4),
+            })
+        return results
 
     def _rerank(self, query: str, results: List[Dict], top_k: int) -> List[Dict]:
-        """Cross-encoder reranking."""
+        """Cross-encoder reranking để cải thiện độ chính xác."""
         try:
             pairs = [(query, r["text"]) for r in results]
             scores = self.reranker.predict(pairs)
             for result, score in zip(results, scores):
                 result["rerank_score"] = float(score)
                 result["score"] = float(score)
+                result["similarity_score"] = float(score)
             results.sort(key=lambda x: x.get("rerank_score", 0), reverse=True)
             return results[:top_k]
         except Exception as e:
@@ -395,7 +570,6 @@ class VectorStore:
         selected_indices = []
         remaining = list(range(len(results)))
 
-        # Chọn chunk đầu tiên có score cao nhất
         first = max(remaining, key=lambda i: results[i]["score"])
         selected_indices.append(first)
         remaining.remove(first)
@@ -403,13 +577,15 @@ class VectorStore:
         while len(selected_indices) < top_k and remaining:
             mmr_scores = []
             for i in remaining:
-                # Relevance với query
-                rel = float(np.dot(query_emb, doc_embs[i]) /
-                            (np.linalg.norm(query_emb) * np.linalg.norm(doc_embs[i]) + 1e-9))
-                # Max similarity với selected
+                rel = float(
+                    np.dot(query_emb, doc_embs[i]) /
+                    (np.linalg.norm(query_emb) * np.linalg.norm(doc_embs[i]) + 1e-9)
+                )
                 sim_selected = max(
-                    float(np.dot(doc_embs[i], doc_embs[j]) /
-                          (np.linalg.norm(doc_embs[i]) * np.linalg.norm(doc_embs[j]) + 1e-9))
+                    float(
+                        np.dot(doc_embs[i], doc_embs[j]) /
+                        (np.linalg.norm(doc_embs[i]) * np.linalg.norm(doc_embs[j]) + 1e-9)
+                    )
                     for j in selected_indices
                 )
                 mmr = (1 - diversity) * rel - diversity * sim_selected
@@ -421,88 +597,32 @@ class VectorStore:
 
         return [results[i] for i in selected_indices]
 
-    async def _keyword_search(
-        self,
-        query: str,
-        top_k: int,
-        filters: Optional[Dict] = None
-    ) -> List[Dict[str, Any]]:
-        """
-        BM25-style keyword search (approximate với ChromaDB).
-        ChromaDB không hỗ trợ BM25 native, ta dùng embedding của keywords.
-        """
-        # Extract keywords từ query
-        keywords = self._extract_keywords(query)
-        if not keywords:
-            return []
-
-        keyword_query = " ".join(keywords)
-        return await self.search(keyword_query, top_k=top_k, filters=filters, use_reranking=False)
-
-    def _reciprocal_rank_fusion(
-        self,
-        result_lists: List[List[Dict]],
-        weights: List[float],
-        k: int = 60
-    ) -> List[Dict]:
-        """Reciprocal Rank Fusion để merge nhiều ranked lists."""
-        scores: Dict[str, float] = {}
-        docs: Dict[str, Dict] = {}
-
-        for result_list, weight in zip(result_lists, weights):
-            for rank, doc in enumerate(result_list):
-                doc_id = doc["chunk_id"]
-                rrf_score = weight / (k + rank + 1)
-                scores[doc_id] = scores.get(doc_id, 0) + rrf_score
-                if doc_id not in docs:
-                    docs[doc_id] = doc
-
-        sorted_ids = sorted(scores.keys(), key=lambda x: scores[x], reverse=True)
-        result = []
-        for doc_id in sorted_ids:
-            doc = docs[doc_id].copy()
-            doc["score"] = round(scores[doc_id], 6)
-            doc["similarity_score"] = doc["score"]
-            result.append(doc)
-
-        return result
-
     def _generate_query_variations(self, query: str) -> List[str]:
-        """Tạo query variations để multi-query retrieval."""
+        """Tạo query variations cho multi-query retrieval."""
         variations = [query]
 
-        # Rút gọn query (lấy noun phrases chính)
         words = query.split()
         if len(words) > 5:
-            # Short version: lấy các từ quan trọng
-            stopwords = {'what', 'is', 'are', 'how', 'does', 'do', 'the', 'a', 'an',
-                        'in', 'of', 'to', 'for', 'and', 'or', 'can', 'tell', 'me', 'about'}
+            stopwords = {
+                "what", "is", "are", "how", "does", "do", "the", "a", "an",
+                "in", "of", "to", "for", "and", "or", "can", "tell", "me", "about"
+            }
             keywords = [w for w in words if w.lower() not in stopwords]
             if keywords:
                 variations.append(" ".join(keywords))
 
-        # Question to statement
-        if query.lower().startswith(('what is', 'what are')):
-            statement = re.sub(r'^what (is|are)\s+', '', query, flags=re.IGNORECASE)
+        if query.lower().startswith(("what is", "what are")):
+            statement = re.sub(r"^what (is|are)\s+", "", query, flags=re.IGNORECASE)
             variations.append(statement)
-        elif query.lower().startswith('how'):
-            variations.append(re.sub(r'^how\s+', '', query, flags=re.IGNORECASE))
+        elif query.lower().startswith("how"):
+            variations.append(re.sub(r"^how\s+", "", query, flags=re.IGNORECASE))
 
-        return list(dict.fromkeys(variations))  # deduplicate
-
-    def _extract_keywords(self, text: str) -> List[str]:
-        """Extract keywords đơn giản từ query."""
-        stopwords = {
-            'what', 'is', 'are', 'how', 'does', 'do', 'the', 'a', 'an', 'in',
-            'of', 'to', 'for', 'and', 'or', 'can', 'tell', 'me', 'about', 'explain',
-            'describe', 'give', 'list', 'show', 'find', 'search', 'get', 'please'
-        }
-        words = re.findall(r'\b\w{3,}\b', text.lower())
-        return [w for w in words if w not in stopwords]
+        return list(dict.fromkeys(variations))  # deduplicate giữ thứ tự
 
 
-# Global instance
-_vector_store_instance = None
+# ─── Singleton ────────────────────────────────────────────────────────────────
+
+_vector_store_instance: Optional[VectorStore] = None
 
 
 def get_vector_store() -> VectorStore:

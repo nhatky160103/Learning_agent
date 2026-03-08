@@ -6,10 +6,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
     Upload, FileText, File, Trash2, Eye, Loader2,
     CheckCircle, Clock, AlertCircle, Search, Plus,
-    Layers, Brain, BookOpen, BarChart2, Map, ChevronDown, ChevronUp, X
+    Layers, Brain, BookOpen, BarChart2, Map, ChevronDown, ChevronUp, X,
+    GitMerge, Zap
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { documentsApi, flashcardsApi } from '@/lib/api';
+import { documentsApi, flashcardsApi, chatApi } from '@/lib/api';
 import SearchResults from '@/components/SearchResults';
 import SearchModal from '@/components/SearchModal';
 
@@ -32,6 +33,7 @@ export default function DocumentsPage() {
     const [isDeepSearch, setIsDeepSearch] = useState(false);
     const [searchResults, setSearchResults] = useState<any[]>([]);
     const [isSearching, setIsSearching] = useState(false);
+    const [deepSearchMode, setDeepSearchMode] = useState<'hybrid' | 'semantic' | 'multi_query'>('hybrid');
     const [generatingFlashcards, setGeneratingFlashcards] = useState<string | null>(null);
     const [searchModalDoc, setSearchModalDoc] = useState<Document | null>(null);
     const [reviewDoc, setReviewDoc] = useState<any | null>(null);
@@ -66,13 +68,23 @@ export default function DocumentsPage() {
         }, 800);
 
         return () => clearTimeout(timer);
-    }, [searchQuery, isDeepSearch]);
+    }, [searchQuery, isDeepSearch, deepSearchMode]);
 
     const performDeepSearch = async () => {
         setIsSearching(true);
         try {
-            const data = await documentsApi.search(searchQuery);
-            setSearchResults(data.results || []);
+            const data = await chatApi.searchDocuments(searchQuery, undefined, deepSearchMode);
+            // Normalize format
+            const normalized = (data.results || []).map((r: any) => ({
+                content: r.text || r.content || '',
+                score: r.relevance_score ?? r.score ?? 0,
+                metadata: r.metadata ?? {
+                    document_id: r.document_id,
+                    title: r.document_title || 'Unknown',
+                    file_type: '',
+                }
+            }));
+            setSearchResults(normalized);
         } catch (error) {
             console.error('Search failed:', error);
             toast.error('Search failed');
@@ -219,15 +231,14 @@ export default function DocumentsPage() {
                 </div>
 
                 <div className="flex items-center gap-4">
-                    {/* Deep Search Toggle */}
+                    {/* Deep Search Toggle + Mode */}
                     <div className="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-lg border border-white/10">
                         <span className={`text-sm ${isDeepSearch ? 'text-primary-400 font-medium' : 'text-gray-400'}`}>
                             Deep Search
                         </span>
                         <button
                             onClick={() => setIsDeepSearch(!isDeepSearch)}
-                            className={`w-10 h-6 rounded-full flex items-center transition-colors p-1 ${isDeepSearch ? 'bg-primary-500' : 'bg-gray-600'
-                                }`}
+                            className={`w-10 h-6 rounded-full flex items-center transition-colors p-1 ${isDeepSearch ? 'bg-primary-500' : 'bg-gray-600'}`}
                         >
                             <motion.div
                                 layout
@@ -235,6 +246,44 @@ export default function DocumentsPage() {
                                 animate={{ x: isDeepSearch ? 16 : 0 }}
                             />
                         </button>
+                        {/* Mode buttons — chỉ hiện khi Deep Search bật */}
+                        {isDeepSearch && (
+                            <div className="flex items-center gap-1 ml-1 pl-2 border-l border-white/10">
+                                <button
+                                    onClick={() => setDeepSearchMode('hybrid')}
+                                    title="BM25 + Vector (best)"
+                                    className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium transition-all ${
+                                        deepSearchMode === 'hybrid'
+                                            ? 'bg-primary-500/30 text-primary-300'
+                                            : 'text-gray-400 hover:text-gray-200'
+                                    }`}
+                                >
+                                    <GitMerge className="w-3 h-3" /> Hybrid
+                                </button>
+                                <button
+                                    onClick={() => setDeepSearchMode('semantic')}
+                                    title="Vector only (fast)"
+                                    className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium transition-all ${
+                                        deepSearchMode === 'semantic'
+                                            ? 'bg-primary-500/30 text-primary-300'
+                                            : 'text-gray-400 hover:text-gray-200'
+                                    }`}
+                                >
+                                    <Zap className="w-3 h-3" /> Semantic
+                                </button>
+                                <button
+                                    onClick={() => setDeepSearchMode('multi_query')}
+                                    title="Multiple query variations"
+                                    className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium transition-all ${
+                                        deepSearchMode === 'multi_query'
+                                            ? 'bg-primary-500/30 text-primary-300'
+                                            : 'text-gray-400 hover:text-gray-200'
+                                    }`}
+                                >
+                                    <Layers className="w-3 h-3" /> Multi
+                                </button>
+                            </div>
+                        )}
                     </div>
 
                     <div className="relative">

@@ -8,44 +8,51 @@ class Settings(BaseSettings):
     # App
     app_name: str = "Smart Learning Companion"
     debug: bool = False
-    
+
     # API Keys
     openai_api_key: str = ""
     google_api_key: str = ""
-    
+
     # Database
     database_url: str = "postgresql+asyncpg://learning_user:learning_pass@localhost:5432/learning_assistant"
     redis_url: str = "redis://localhost:6379"
-    
-    # ChromaDB
-    chroma_host: str = "localhost"
-    chroma_port: int = 8000
-    
-    # Vector Store
+
+    # ─── Elasticsearch (thay thế ChromaDB) ───────────────────────────────────
+    es_host: str = "localhost"
+    es_port: int = 9200
+    es_username: str = "elastic"
+    es_password: str = ""
+    # Path đến CA cert (dùng cho local WSL2 với TLS)
+    # Ví dụ: /home/kydinh/elasticsearch-9.3.1/config/certs/http_ca.crt
+    es_ca_cert: str = ""
+    # Tên index lưu document chunks
+    es_index_name: str = "learning_documents"
+
+    # ─── Vector Store ─────────────────────────────────────────────────────────
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
-    chroma_collection: str = "learning_documents"
+    reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
     chunk_size: int = 500
     chunk_overlap: int = 50
     retrieval_top_k: int = 5
     similarity_threshold: float = 0.7
-    
-    # Upload Settings
+
+    # ─── Upload Settings ──────────────────────────────────────────────────────
     max_upload_size_mb: int = 50
     upload_chunk_size: int = 8192  # 8KB chunks for streaming
     upload_dir: str = "uploads"
-    
-    # JWT
+
+    # ─── JWT ──────────────────────────────────────────────────────────────────
     secret_key: str = "your-super-secret-key-change-in-production"
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
-    
-    # CORS
+
+    # ─── CORS ─────────────────────────────────────────────────────────────────
     cors_origins: str = '["http://localhost:3000"]'
-    
+
     @property
     def cors_origins_list(self) -> List[str]:
         return json.loads(self.cors_origins)
-    
+
     class Config:
         env_file = ".env"
         extra = "ignore"
