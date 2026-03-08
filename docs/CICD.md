@@ -87,7 +87,7 @@ CircleCI deploys to **Railway** by triggering a redeploy of each service:
 ```bash
 railway redeploy --service backend --yes
 railway redeploy --service frontend --yes
-railway redeploy --service chromadb --yes
+railway redeploy --service elasticsearch --yes
 ```
 
 Railway pulls the latest Docker images from Docker Hub that were built in the previous stage.
@@ -102,7 +102,7 @@ The application is hosted on [Railway](https://railway.app) with the following s
 |---------|-------------|
 | **Frontend** | Next.js app served via Docker |
 | **Backend** | FastAPI server via Docker |
-| **ChromaDB** | Vector database for RAG |
+| **Elasticsearch** | Vector + full-text search (BM25 + kNN) |
 | **PostgreSQL** | Relational database (Railway managed) |
 
 ### Live URLs
@@ -129,6 +129,6 @@ Already configured via `.github/workflows/ci-cd.yml`. Just add the required secr
 ### 3. Railway
 
 1. Create a project on [Railway](https://railway.app)
-2. Add services for Backend, Frontend, ChromaDB, and PostgreSQL
+2. Add services for Backend, Frontend, Elasticsearch, and PostgreSQL
 3. Configure environment variables for each service
 4. Generate a `RAILWAY_TOKEN` and add it to CircleCI

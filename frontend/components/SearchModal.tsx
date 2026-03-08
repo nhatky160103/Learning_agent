@@ -1,9 +1,17 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, X, Loader2 } from 'lucide-react';
-import { documentsApi } from '@/lib/api';
+import { Search, X, Loader2, Zap, GitMerge, Layers } from 'lucide-react';
+import { chatApi } from '@/lib/api';
 import SearchResults from './SearchResults';
 import toast from 'react-hot-toast';
+
+type SearchMode = 'hybrid' | 'semantic' | 'multi_query';
+
+const SEARCH_MODES: { value: SearchMode; label: string; icon: any; desc: string }[] = [
+    { value: 'hybrid',      label: 'Hybrid',      icon: GitMerge, desc: 'BM25 + Vector (best)' },
+    { value: 'semantic',    label: 'Semantic',    icon: Zap,      desc: 'Vector only (fast)' },
+    { value: 'multi_query', label: 'Multi-Query', icon: Layers,   desc: 'Multiple variations' },
+];
 
 interface SearchModalProps {
     isOpen: boolean;
@@ -18,6 +26,7 @@ export default function SearchModal({ isOpen, onClose, documentId, filename, ini
     const [results, setResults] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
     const [debouncedQuery, setDebouncedQuery] = useState(initialQuery);
+    const [mode, setMode] = useState<SearchMode>('hybrid');
 
     // Debounce search query
     useEffect(() => {
@@ -34,10 +43,20 @@ export default function SearchModal({ isOpen, onClose, documentId, filename, ini
 
             setLoading(true);
             try {
-                const data = await documentsApi.searchInDocument(documentId, debouncedQuery);
-                setResults(data.results || []);
+                const data = await chatApi.searchDocuments(debouncedQuery, documentId, mode);
+                // Normalize format từ chat API → format SearchResults expect
+                const normalized = (data.results || []).map((r: any) => ({
+                    content: r.text || r.content || '',
+                    score: r.relevance_score ?? r.score ?? 0,
+                    metadata: r.metadata ?? {
+                        document_id: r.document_id,
+                        title: r.document_title || 'Unknown',
+                        file_type: '',
+                    }
+                }));
+                setResults(normalized);
             } catch (error) {
-                console.error('Search in document failed:', error);
+                console.error('Search failed:', error);
                 toast.error('Search failed');
             } finally {
                 setLoading(false);
@@ -47,7 +66,7 @@ export default function SearchModal({ isOpen, onClose, documentId, filename, ini
         if (isOpen && debouncedQuery) {
             performSearch();
         }
-    }, [debouncedQuery, documentId, isOpen]);
+    }, [debouncedQuery, documentId, isOpen, mode]);
 
     // Reset or Initialize when opened/closed
     useEffect(() => {
@@ -93,12 +112,34 @@ export default function SearchModal({ isOpen, onClose, documentId, filename, ini
                         </button>
                     </div>
 
+                    {/* Mode Selector */}
+                    <div className="px-4 py-2 border-b border-white/10 flex gap-2">
+                        {SEARCH_MODES.map(({ value, label, icon: Icon, desc }) => (
+                            <button
+                                key={value}
+                                onClick={() => setMode(value)}
+                                title={desc}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                                    mode === value
+                                        ? 'bg-primary-500/30 text-primary-300 border border-primary-500/50'
+                                        : 'text-gray-400 hover:text-gray-200 hover:bg-white/5 border border-transparent'
+                                }`}
+                            >
+                                <Icon className="w-3.5 h-3.5" />
+                                {label}
+                            </button>
+                        ))}
+                        <span className="ml-auto text-xs text-gray-500 self-center">
+                            {SEARCH_MODES.find(m => m.value === mode)?.desc}
+                        </span>
+                    </div>
+
                     {/* Results Area */}
                     <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
                         {loading && (
                             <div className="flex flex-col items-center justify-center py-12">
                                 <Loader2 className="w-8 h-8 text-primary-400 animate-spin mb-4" />
-                                <p className="text-gray-400">Searching document content...</p>
+                                <p className="text-gray-400">Searching with {mode} mode...</p>
                             </div>
                         )}
 

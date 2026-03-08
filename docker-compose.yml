@@ -18,16 +18,24 @@ services:
     networks:
       - learning_network
 
-  chromadb:
-    image: chromadb/chroma:latest
-    container_name: learning_assistant_chroma
-    ports:
-      - "8000:8000"
-    volumes:
-      - chroma_data:/chroma/chroma
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.3.1
+    container_name: learning_assistant_es
     environment:
-      - IS_PERSISTENT=TRUE
-      - ANONYMIZED_TELEMETRY=FALSE
+      - discovery.type=single-node
+      - ELASTIC_PASSWORD=learning_es_pass
+      - xpack.security.enabled=true
+      - xpack.security.http.ssl.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "9200:9200"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -u elastic:learning_es_pass http://localhost:9200/_cluster/health | grep -q 'green\\|yellow'"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
     networks:
       - learning_network
 
@@ -45,9 +53,12 @@ services:
       - uploads_data:/app/uploads
     environment:
       - DATABASE_URL=postgresql+asyncpg://learning_user:learning_pass@postgres:5432/learning_assistant
-      - CHROMA_HOST=chromadb
-      - CHROMA_PORT=8000
-      - CHROMA_COLLECTION=learning_documents
+      - ES_HOST=elasticsearch
+      - ES_PORT=9200
+      - ES_USERNAME=elastic
+      - ES_PASSWORD=learning_es_pass
+      - ES_CA_CERT=
+      - ES_INDEX_NAME=learning_documents
       - JWT_SECRET_KEY=dev-secret-key-change-in-production
       - JWT_ALGORITHM=HS256
       - ACCESS_TOKEN_EXPIRE_MINUTES=30
@@ -55,8 +66,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      chromadb:
-        condition: service_started
+      elasticsearch:
+        condition: service_healthy
     networks:
       - learning_network
     command: uvicorn main:app --host 0.0.0.0 --port 8001 --reload
@@ -85,7 +96,7 @@ services:
 
 volumes:
   postgres_data:
-  chroma_data:
+  es_data:
   uploads_data:
 
 networks:

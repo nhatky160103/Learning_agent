@@ -27,33 +27,39 @@ jobs:
           POSTGRES_USER: test_user
           POSTGRES_PASSWORD: test_pass
           POSTGRES_DB: test_db
-      - image: chromadb/chroma:latest
+      - image: docker.elastic.co/elasticsearch/elasticsearch:9.3.1
         environment:
-          IS_PERSISTENT: "FALSE"
+          discovery.type: single-node
+          xpack.security.enabled: "false"
+          ES_JAVA_OPTS: "-Xms512m -Xmx512m"
     environment:
       DATABASE_URL: postgresql+asyncpg://test_user:test_pass@localhost:5432/test_db
-      CHROMA_HOST: localhost
-      CHROMA_PORT: 8000
+      ES_HOST: localhost
+      ES_PORT: 9200
+      ES_USERNAME: ""
+      ES_PASSWORD: ""
+      ES_CA_CERT: ""
+      ES_INDEX_NAME: test_learning_documents
       TESTING: "1"
     steps:
       - checkout
       - run:
-          name: Wait for Postgres & ChromaDB
+          name: Wait for Postgres & Elasticsearch
           command: |
             dockerize -wait tcp://localhost:5432 -timeout 30s
-            echo "Waiting for ChromaDB (max 60s)..."
-            CHROMA_READY=0
+            echo "Waiting for Elasticsearch (max 60s)..."
+            ES_READY=0
             for i in $(seq 1 30); do
-              if curl -sf http://localhost:8000/api/v1/heartbeat > /dev/null 2>&1; then
-                echo "ChromaDB is ready!"
-                CHROMA_READY=1
+              if curl -sf http://localhost:9200/_cluster/health > /dev/null 2>&1; then
+                echo "Elasticsearch is ready!"
+                ES_READY=1
                 break
-              fi  
+              fi
               echo "  attempt $i/30..."
               sleep 2
             done
-            if [ $CHROMA_READY -eq 0 ]; then
-              echo "Warning: ChromaDB not ready, continuing anyway..."
+            if [ $ES_READY -eq 0 ]; then
+              echo "Warning: Elasticsearch not ready, continuing anyway..."
             fi
       - python/install-packages:
           pkg-manager: pip
@@ -120,7 +126,7 @@ jobs:
             # Trigger redeploy cho từng service (Railway sẽ pull image mới từ Docker Hub)
             railway redeploy --service backend --yes
             railway redeploy --service frontend --yes
-            railway redeploy --service chromadb --yes
+            railway redeploy --service elasticsearch --yes
 
 workflows:
   build-test-deploy:

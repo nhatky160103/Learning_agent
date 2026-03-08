@@ -53,7 +53,7 @@ AI-powered personalized learning assistant with multi-agent orchestration, RAG-e
 ### Backend
 - **FastAPI** — High-performance async API
 - **PostgreSQL** — Relational database with async SQLAlchemy
-- **ChromaDB** — Vector database for semantic search
+- **Elasticsearch** — Vector database & full-text search (BM25 + kNN hybrid)
 - **LangChain** — LLM orchestration framework
 - **SentenceTransformers** — Document embeddings (all-MiniLM-L6-v2)
 - **LLM Support** — OpenAI (GPT-4o-mini) / Google (Gemini-2.5-flash)
