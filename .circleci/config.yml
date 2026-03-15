@@ -83,7 +83,7 @@ jobs:
 
   build-and-push-backend:
     docker:
-      - image: google/cloud-sdk:slim
+      - image: google/cloud-sdk
     steps:
       - setup_remote_docker
       - checkout
@@ -101,7 +101,7 @@ jobs:
             docker push gcr.io/$GCP_PROJECT/learning-assistant-backend:latest
   build-and-push-frontend:
     docker:
-      - image: google/cloud-sdk:slim
+      - image: google/cloud-sdk
     steps:
       - setup_remote_docker
       - checkout
@@ -123,7 +123,7 @@ jobs:
 
   deploy:
     docker:
-      - image: google/cloud-sdk:slim
+      - image: google/cloud-sdk
     steps:
       - gcp-auth
       - run:
