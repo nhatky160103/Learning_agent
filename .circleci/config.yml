@@ -42,6 +42,15 @@ jobs:
           discovery.type: single-node
           xpack.security.enabled: "false"
           ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://test_user:test_pass@localhost:5432/test_db
+      ES_HOST: localhost
+      ES_PORT: 9200
+      ES_USERNAME: ""
+      ES_PASSWORD: ""
+      ES_CA_CERT: ""
+      ES_INDEX_NAME: test_learning_documents
+      TESTING: "1"
     steps:
       - checkout
       - run:
