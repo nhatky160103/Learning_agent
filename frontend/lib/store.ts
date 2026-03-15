@@ -102,8 +102,6 @@ export const useStudyStore = create<StudyState>((set, get) => ({
 interface UIState {
     sidebarOpen: boolean;
     toggleSidebar: () => void;
-    theme: 'dark' | 'light';
-    toggleTheme: () => void;
 }
 
 export const useUIStore = create<UIState>()(
@@ -111,8 +109,7 @@ export const useUIStore = create<UIState>()(
         (set) => ({
             sidebarOpen: true,
             toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
-            theme: 'dark',
-            toggleTheme: () => set((state) => ({ theme: state.theme === 'dark' ? 'light' : 'dark' })),
+
         }),
         {
             name: 'ui-storage',

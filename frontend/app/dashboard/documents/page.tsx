@@ -252,33 +252,30 @@ export default function DocumentsPage() {
                                 <button
                                     onClick={() => setDeepSearchMode('hybrid')}
                                     title="BM25 + Vector (best)"
-                                    className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium transition-all ${
-                                        deepSearchMode === 'hybrid'
+                                    className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium transition-all ${deepSearchMode === 'hybrid'
                                             ? 'bg-primary-500/30 text-primary-300'
                                             : 'text-gray-400 hover:text-gray-200'
-                                    }`}
+                                        }`}
                                 >
                                     <GitMerge className="w-3 h-3" /> Hybrid
                                 </button>
                                 <button
                                     onClick={() => setDeepSearchMode('semantic')}
                                     title="Vector only (fast)"
-                                    className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium transition-all ${
-                                        deepSearchMode === 'semantic'
+                                    className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium transition-all ${deepSearchMode === 'semantic'
                                             ? 'bg-primary-500/30 text-primary-300'
                                             : 'text-gray-400 hover:text-gray-200'
-                                    }`}
+                                        }`}
                                 >
                                     <Zap className="w-3 h-3" /> Semantic
                                 </button>
                                 <button
                                     onClick={() => setDeepSearchMode('multi_query')}
                                     title="Multiple query variations"
-                                    className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium transition-all ${
-                                        deepSearchMode === 'multi_query'
+                                    className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium transition-all ${deepSearchMode === 'multi_query'
                                             ? 'bg-primary-500/30 text-primary-300'
                                             : 'text-gray-400 hover:text-gray-200'
-                                    }`}
+                                        }`}
                                 >
                                     <Layers className="w-3 h-3" /> Multi
                                 </button>
@@ -397,47 +394,50 @@ export default function DocumentsPage() {
                                         </div>
 
                                         {/* Actions */}
-                                        <div className="mt-4 pt-4 border-t border-white/10 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button
-                                                onClick={() => handleGenerateFlashcards(doc)}
-                                                disabled={(doc.status !== 'ready' && doc.status !== 'processed') || generatingFlashcards === doc.id}
-                                                className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-primary-500/20 text-primary-400 hover:bg-primary-500/30 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
-                                            >
-                                                {generatingFlashcards === doc.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Layers className="w-4 h-4" />}
-                                                Cards
-                                            </button>
-                                            <button
-                                                onClick={() => handleReview(doc)}
-                                                disabled={(doc.status !== 'ready' && doc.status !== 'processed') || reviewLoading === doc.id}
-                                                className="flex items-center justify-center gap-1 px-3 py-2 rounded-lg bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
-                                                title="AI Review"
-                                            >
-                                                {reviewLoading === doc.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Brain className="w-4 h-4" />}
-                                                Review
-                                            </button>
-                                            <button
-                                                onClick={() => handleStudyGuide(doc)}
-                                                disabled={(doc.status !== 'ready' && doc.status !== 'processed') || studyGuideLoading === doc.id}
-                                                className="flex items-center justify-center gap-1 px-3 py-2 rounded-lg bg-green-500/20 text-green-400 hover:bg-green-500/30 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
-                                                title="Study Guide"
-                                            >
-                                                {studyGuideLoading === doc.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <BookOpen className="w-4 h-4" />}
-                                                Guide
-                                            </button>
-                                            <button
-                                                onClick={() => setSearchModalDoc(doc)}
-                                                disabled={doc.status !== 'ready' && doc.status !== 'processed'}
-                                                className="p-2 rounded-lg bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
-                                                title="Search in Document"
-                                            >
-                                                <Search className="w-4 h-4" />
-                                            </button>
-                                            <button
-                                                onClick={() => handleDelete(doc.id)}
-                                                className="p-2 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30"
-                                            >
-                                                <Trash2 className="w-4 h-4" />
-                                            </button>
+                                        <div className="mt-4 pt-4 border-t border-white/10">
+                                            {/* Row 1: Main actions */}
+                                            <div className="flex items-center gap-2 mb-2">
+                                                <button
+                                                    onClick={() => handleGenerateFlashcards(doc)}
+                                                    disabled={(doc.status !== 'ready' && doc.status !== 'processed') || generatingFlashcards === doc.id}
+                                                    className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg bg-primary-500/20 text-primary-400 hover:bg-primary-500/30 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-medium"
+                                                >
+                                                    {generatingFlashcards === doc.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Layers className="w-3.5 h-3.5" />}
+                                                    Cards
+                                                </button>
+                                                <button
+                                                    onClick={() => handleReview(doc)}
+                                                    disabled={(doc.status !== 'ready' && doc.status !== 'processed') || reviewLoading === doc.id}
+                                                    className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg bg-violet-500/20 text-violet-400 hover:bg-violet-500/30 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-medium"
+                                                >
+                                                    {reviewLoading === doc.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Brain className="w-3.5 h-3.5" />}
+                                                    Review
+                                                </button>
+                                                <button
+                                                    onClick={() => handleStudyGuide(doc)}
+                                                    disabled={(doc.status !== 'ready' && doc.status !== 'processed') || studyGuideLoading === doc.id}
+                                                    className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg bg-teal-500/20 text-teal-400 hover:bg-teal-500/30 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-medium"
+                                                >
+                                                    {studyGuideLoading === doc.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <BookOpen className="w-3.5 h-3.5" />}
+                                                    Guide
+                                                </button>
+                                            </div>
+                                            {/* Row 2: Secondary actions */}
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    onClick={() => setSearchModalDoc(doc)}
+                                                    disabled={doc.status !== 'ready' && doc.status !== 'processed'}
+                                                    className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-medium"
+                                                >
+                                                    <Search className="w-3.5 h-3.5" /> Search
+                                                </button>
+                                                <button
+                                                    onClick={() => handleDelete(doc.id)}
+                                                    className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 text-xs font-medium"
+                                                >
+                                                    <Trash2 className="w-3.5 h-3.5" /> Delete
+                                                </button>
+                                            </div>
                                         </div>
                                     </motion.div>
                                 ))}
@@ -496,11 +496,10 @@ export default function DocumentsPage() {
                                             <div className="space-y-2">
                                                 {reviewDoc.review.key_concepts.map((c: any, i: number) => (
                                                     <div key={i} className="flex items-start gap-3 bg-white/5 rounded-lg p-3">
-                                                        <span className={`mt-0.5 px-2 py-0.5 rounded text-xs ${
-                                                            c.importance === 'high' ? 'bg-red-500/20 text-red-300' :
-                                                            c.importance === 'medium' ? 'bg-yellow-500/20 text-yellow-300' :
-                                                            'bg-gray-500/20 text-gray-300'
-                                                        }`}>{c.importance}</span>
+                                                        <span className={`mt-0.5 px-2 py-0.5 rounded text-xs ${c.importance === 'high' ? 'bg-red-500/20 text-red-300' :
+                                                                c.importance === 'medium' ? 'bg-yellow-500/20 text-yellow-300' :
+                                                                    'bg-gray-500/20 text-gray-300'
+                                                            }`}>{c.importance}</span>
                                                         <div>
                                                             <p className="text-white font-medium">{c.concept}</p>
                                                             <p className="text-gray-400 text-sm">{c.brief_explanation}</p>

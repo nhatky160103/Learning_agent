@@ -491,15 +491,6 @@ class AIAgentOrchestrator:
         except Exception:
             return []
 
-    async def search_documents(
-        self,
-        query: str,
-        filters: Dict = None,
-        top_k: int = 10
-    ) -> List[Dict]:
-        """Search across user's documents."""
-        return await self._retrieve_context(query, top_k=top_k, filters=filters)
-
     # ─── Private helpers ──────────────────────────────────────────────────────
 
     async def _retrieve_context(
