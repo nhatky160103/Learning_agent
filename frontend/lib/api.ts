@@ -54,10 +54,6 @@ export const authApi = {
         const response = await api.get('/auth/me');
         return response.data;
     },
-    updateProfile: async (data: any) => {
-        const response = await api.put('/auth/me', data);
-        return response.data;
-    },
 };
 
 // Documents API
@@ -68,18 +64,6 @@ export const documentsApi = {
     },
     studyGuide: async (id: string) => {
         const response = await api.post(`/documents/${id}/study-guide`);
-        return response.data;
-    },
-    analyzeGaps: async (id: string) => {
-        const response = await api.post(`/documents/${id}/analyze-gaps`);
-        return response.data;
-    },
-    getChunks: async (id: string) => {
-        const response = await api.get(`/documents/${id}/chunks`);
-        return response.data;
-    },
-    reprocess: async (id: string) => {
-        const response = await api.post(`/documents/${id}/reprocess`);
         return response.data;
     },
 
@@ -99,24 +83,8 @@ export const documentsApi = {
         const response = await api.get(`/documents/${id}`);
         return response.data;
     },
-    getContent: async (id: string) => {
-        const response = await api.get(`/documents/${id}/content`);
-        return response.data;
-    },
     delete: async (id: string) => {
         const response = await api.delete(`/documents/${id}`);
-        return response.data;
-    },
-    search: async (query: string, top_k: number = 5) => {
-        const response = await api.post('/documents/search', null, {
-            params: { query, top_k }
-        });
-        return response.data;
-    },
-    searchInDocument: async (id: string, query: string, top_k: number = 5) => {
-        const response = await api.post(`/documents/${id}/search`, null, {
-            params: { query, top_k }
-        });
         return response.data;
     },
 };
@@ -265,14 +233,6 @@ export const chatApi = {
         return response.data;
     },
     getStreamUrl: () => `${API_BASE_URL}/chat/stream`,
-    explainConcept: async (data: { concept: string; level?: string; document_id?: string }) => {
-        const response = await api.post('/chat/explain', data);
-        return response.data;
-    },
-    summarize: async (text: string) => {
-        const response = await api.post('/chat/summarize', null, { params: { text } });
-        return response.data;
-    },
 };
 
 export default api;

@@ -56,7 +56,7 @@ export default function DashboardLayout({
     };
 
     return (
-        <div className="min-h-screen flex">
+        <div className="h-screen flex overflow-hidden">
             {/* Sidebar - Desktop */}
             <AnimatePresence>
                 {sidebarOpen && (
@@ -64,7 +64,7 @@ export default function DashboardLayout({
                         initial={{ width: 0, opacity: 0 }}
                         animate={{ width: 280, opacity: 1 }}
                         exit={{ width: 0, opacity: 0 }}
-                        className="hidden lg:flex flex-col h-screen sticky top-0 glass border-r border-white/10"
+                        className="hidden lg:flex flex-col h-full glass border-r border-white/10 flex-shrink-0"
                     >
                         {/* Logo */}
                         <div className="p-6 border-b border-white/10">
@@ -214,9 +214,9 @@ export default function DashboardLayout({
             </AnimatePresence>
 
             {/* Main Content */}
-            <main className="flex-1 min-w-0">
+            <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
                 {/* Top Bar */}
-                <header className="sticky top-0 z-30 glass border-b border-white/10">
+                <header className="flex-shrink-0 z-30 glass border-b border-white/10">
                     <div className="flex items-center justify-between px-4 lg:px-8 h-16">
                         <button
                             onClick={toggleSidebar}
@@ -242,7 +242,7 @@ export default function DashboardLayout({
                 </header>
 
                 {/* Page Content */}
-                <div className="p-4 lg:p-8">
+                <div className="flex-1 overflow-y-auto p-4 lg:p-8">
                     {children}
                 </div>
             </main>
