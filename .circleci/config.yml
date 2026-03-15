@@ -14,6 +14,13 @@ commands:
               gcloud auth activate-service-account --key-file=-
             gcloud config set project $GCP_PROJECT
             gcloud auth configure-docker --quiet
+  gcp-auth-with-docker:
+    steps:
+      - run:
+          name: Install Docker CLI
+          command: apt-get update && apt-get install -y docker.io --quiet
+      - gcp-auth
+
 
 jobs:
   test-frontend:
@@ -83,11 +90,11 @@ jobs:
 
   build-and-push-backend:
     docker:
-      - image: google/cloud-sdk
+      - image: google/cloud-sdk:slim  
     steps:
       - setup_remote_docker
       - checkout
-      - gcp-auth 
+      - gcp-auth-with-docker 
       - run:
           name: Build Backend Image
           command: |
@@ -101,11 +108,11 @@ jobs:
             docker push gcr.io/$GCP_PROJECT/learning-assistant-backend:latest
   build-and-push-frontend:
     docker:
-      - image: google/cloud-sdk
+      - image: google/cloud-sdk:slim  
     steps:
       - setup_remote_docker
       - checkout
-      - gcp-auth 
+      - gcp-auth-with-docker 
       - run:
           name: Build Frontend Image
           command: |
@@ -123,7 +130,7 @@ jobs:
 
   deploy:
     docker:
-      - image: google/cloud-sdk
+      - image: google/cloud-sdk:slim  
     steps:
       - gcp-auth
       - run:
