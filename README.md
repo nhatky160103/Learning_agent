@@ -9,6 +9,8 @@ AI-powered personalized learning assistant with multi-agent orchestration, RAG-e
 
 🌐 **Deployed on**: Google Cloud Run (`asia-southeast1`)
 
+🔗 **Live Demo**: https://learning-assistant-frontend-201852420492.asia-southeast1.run.app/
+
 ## 📸 Features in Action
 
 ### Dashboard Overview
