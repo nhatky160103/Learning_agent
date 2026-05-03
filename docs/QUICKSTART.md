@@ -155,12 +155,11 @@ FRONTEND_URL=http://localhost:3000
 CORS_ORIGINS=["http://localhost:3000"]
 NEXT_PUBLIC_API_URL=http://localhost:8001/api
 
-# === Docker Hub (for CI/CD) ===
-DOCKER_USERNAME=your-dockerhub-username
-DOCKER_PASSWORD=your-dockerhub-password
-
-# === Railway (for deployment) ===
-RAILWAY_TOKEN=your-railway-token
+# === CI/CD (CircleCI + GCP) ===
+GCP_PROJECT=learning-agent-486514
+GCP_REGION=asia-southeast1
+GCP_SERVICE_ACCOUNT_KEY=<base64-encoded-service-account-key>
+BACKEND_URL=https://learning-assistant-backend-xxx.run.app
 ```
 
 > [!IMPORTANT]
@@ -172,8 +171,17 @@ RAILWAY_TOKEN=your-railway-token
 
 ## 🌐 Production Deployment
 
-The application is deployed on **Railway**:
+The application is deployed on **Google Cloud Run** (region: `asia-southeast1`).
 
-- **Live App**: https://frontend-production-926f.up.railway.app
+### Infrastructure:
+
+| Service | Platform |
+|---------|----------|
+| Backend API | Cloud Run |
+| Frontend | Cloud Run |
+| PostgreSQL | Cloud SQL (db-f1-micro) |
+| Elasticsearch | GCE VM (e2-medium, Ubuntu 22.04) |
+| Secrets | Secret Manager |
+| Docker Images | Google Container Registry (gcr.io) |
 
 For CI/CD details and deployment pipeline, see [CICD.md](./CICD.md).

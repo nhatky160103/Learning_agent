@@ -7,7 +7,9 @@ AI-powered personalized learning assistant with multi-agent orchestration, RAG-e
 ![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.3-3178C6?style=flat-square&logo=typescript)
 
-🌐 **Live Demo**: [frontend-production-926f.up.railway.app](https://frontend-production-926f.up.railway.app)
+🌐 **Deployed on**: Google Cloud Run (`asia-southeast1`)
+
+🔗 **Live Demo**: https://learning-assistant-frontend-201852420492.asia-southeast1.run.app/
 
 ## 📸 Features in Action
 
@@ -136,7 +138,7 @@ learning_assistant/
 │
 ├── docker-compose.yml       # Development stack
 ├── .github/workflows/       # GitHub Actions CI/CD
-└── .circleci/               # CircleCI CI/CD
+└── .circleci/               # CircleCI CI/CD (deploy to GCP Cloud Run)
 ```
 
 ## 📖 Documentation
@@ -145,7 +147,7 @@ learning_assistant/
 |----------|-------------|
 | [Quick Start Guide](docs/QUICKSTART.md) | Setup, Docker, environment variables |
 | [API Reference](docs/API.md) | All 35+ API endpoints with examples |
-| [CI/CD & Deployment](docs/CICD.md) | GitHub Actions, CircleCI, Railway |
+| [CI/CD & Deployment](docs/CICD.md) | CircleCI, Google Cloud Run, GCR |
 
 ## 📄 License
 

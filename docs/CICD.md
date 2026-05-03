@@ -2,133 +2,241 @@
 
 Automated testing, building, and deployment pipeline for Smart Learning Companion.
 
-**Live Deployment**: https://frontend-production-926f.up.railway.app
+**Live Deployment**: Google Cloud Run (`asia-southeast1`)
 
 ---
 
 ## Overview
 
-The project uses **two CI/CD systems** running in parallel:
-
-```mermaid
-graph LR
-    A[Push to main] --> B[GitHub Actions]
-    A --> C[CircleCI]
-    
-    B --> D[Test Backend]
-    B --> E[Test Frontend]
-    D & E --> F[Build & Push Docker Images]
-    
-    C --> G[Test Backend]
-    C --> H[Test Frontend]
-    G & H --> I[Build & Push Docker Images]
-    I --> J[Deploy to Railway]
+```
+Push to main
+     ↓
+CircleCI Pipeline
+     ├── test-frontend  (lint)
+     ├── test-backend   (pytest + Postgres + Elasticsearch)
+     │
+     ├── [main only] build-and-push-backend  → gcr.io/learning-agent-486514/learning-assistant-backend
+     ├── [main only] build-and-push-frontend → gcr.io/learning-agent-486514/learning-assistant-frontend
+     │
+     └── [main only] deploy
+           ├── Cloud Run: learning-assistant-backend
+           └── Cloud Run: learning-assistant-frontend
 ```
 
 ---
 
-## GitHub Actions
+## CircleCI Config
 
-**Config**: [`.github/workflows/ci-cd.yml`](../.github/workflows/ci-cd.yml)
+**File**: [`.circleci/config.yml`](../.circleci/config.yml)
 
-### Pipeline Stages
+### Reusable Commands
 
-| Stage | Trigger | Description |
-|-------|---------|-------------|
-| **Test Backend** | Push / PR to `main`, `develop` | Install Python 3.11, run `pytest` |
-| **Test Frontend** | Push / PR to `main`, `develop` | Install Node.js 20, run lint & build |
-| **Build & Push** | Push to `main` only | Build multi-stage Docker images, push to Docker Hub |
+```yaml
+commands:
+  gcp-auth:           # Authenticate với GCP (dùng trong deploy)
+  gcp-auth-with-docker: # Cài Docker CLI + authenticate GCP (dùng trong build)
+```
 
-### Required GitHub Secrets
+### Jobs
 
-| Secret | Description |
-|--------|-------------|
-| `DOCKER_USERNAME` | Docker Hub username |
-| `DOCKER_PASSWORD` | Docker Hub password or access token |
+| Job | Trigger | Mô tả |
+|-----|---------|-------|
+| `test-frontend` | Mọi push | Lint với Node.js |
+| `test-backend` | Mọi push | pytest với Postgres + ES containers |
+| `build-and-push-backend` | `main` only | Build & push image lên GCR |
+| `build-and-push-frontend` | `main` only | Build & push image lên GCR |
+| `deploy` | `main` only, sau build | Deploy lên Cloud Run |
 
 ### Docker Image Tags
 
-Images are pushed with automatic tagging:
-- `latest` — always points to the latest `main` build
-- `main-<sha>` — commit-specific tag
-- `main` — branch tag
+Mỗi build tạo **2 tags**:
+- `:latest` — bản mới nhất
+- `:<CIRCLE_SHA1>` — gắn với commit hash cụ thể (dùng để rollback)
 
-> [!NOTE]
-> The deployment job in GitHub Actions is currently **commented out**. Deployment is handled by CircleCI (see below).
+Deploy sử dụng `:<CIRCLE_SHA1>` để tránh race condition khi nhiều pipeline chạy đồng thời.
+
+### CircleCI Environment Variables
+
+Cấu hình tại **Project Settings → Environment Variables**:
+
+| Variable | Giá trị | Mô tả |
+|----------|---------|-------|
+| `GCP_PROJECT` | `learning-agent-486514` | GCP Project ID |
+| `GCP_REGION` | `asia-southeast1` | Region deploy |
+| `GCP_SERVICE_ACCOUNT_KEY` | base64 encoded JSON | Service account key của `circleci-deployer` |
+| `BACKEND_URL` | `https://learning-assistant-backend-xxx.run.app` | URL Cloud Run backend (set sau lần deploy đầu) |
 
 ---
 
-## CircleCI
+## GCP Infrastructure
 
-**Config**: [`.circleci/config.yml`](../.circleci/config.yml)
+### Google Container Registry (GCR)
 
-### Pipeline Stages
-
-| Stage | Trigger | Description |
-|-------|---------|-------------|
-| **Test Backend** | All pushes | Python 3.11, install deps, run `pytest` |
-| **Test Frontend** | All pushes | Node.js 20, `npm ci`, lint, build, test |
-| **Build Backend Image** | `main` branch only | Build & push backend Docker image |
-| **Build Frontend Image** | `main` branch only | Build & push frontend Docker image |
-| **Deploy to Railway** | `main` branch, after builds | Redeploy services on Railway |
-
-### Required CircleCI Environment Variables
-
-| Variable | Description |
-|----------|-------------|
-| `DOCKER_USERNAME` | Docker Hub username |
-| `DOCKER_PASSWORD` | Docker Hub password or access token |
-| `RAILWAY_TOKEN` | Railway API token for deployment |
-
-### Deployment
-
-CircleCI deploys to **Railway** by triggering a redeploy of each service:
-
-```bash
-railway redeploy --service backend --yes
-railway redeploy --service frontend --yes
-railway redeploy --service elasticsearch --yes
+Images được lưu tại:
+```
+gcr.io/learning-agent-486514/learning-assistant-backend
+gcr.io/learning-agent-486514/learning-assistant-frontend
 ```
 
-Railway pulls the latest Docker images from Docker Hub that were built in the previous stage.
+### Cloud Run Services
+
+| Service | Image | Region |
+|---------|-------|--------|
+| `learning-assistant-backend` | `gcr.io/.../learning-assistant-backend` | `asia-southeast1` |
+| `learning-assistant-frontend` | `gcr.io/.../learning-assistant-frontend` | `asia-southeast1` |
+
+**Backend Cloud Run config:**
+- Memory: 2 GiB, CPU: 1 vCPU
+- Min instances: 0 (scale to zero), Max: 1
+- Port: 8001
+- VPC: Connected (để reach Elasticsearch VM qua internal IP)
+- Cloud SQL: `learning-agent-486514:asia-southeast1:learning-assistant-db`
+- Execution environment: Second generation
+
+### Cloud SQL (PostgreSQL 16)
+
+| Setting | Giá trị |
+|---------|---------|
+| Instance | `learning-assistant-db` |
+| Tier | `db-f1-micro` |
+| Region | `asia-southeast1` |
+| Database | `learning_assistant` |
+| User | `learning_user` |
+
+Connection string (lưu trong Secret Manager):
+```
+postgresql+asyncpg://learning_user:PASSWORD@/learning_assistant?host=/cloudsql/learning-agent-486514:asia-southeast1:learning-assistant-db
+```
+
+### Elasticsearch (GCE VM)
+
+| Setting | Giá trị |
+|---------|---------|
+| VM Name | `elasticsearch-vm` |
+| Zone | `asia-southeast1-a` |
+| Machine | `e2-medium` (2 vCPU, 4 GB RAM) |
+| OS | Ubuntu 22.04 LTS |
+| Disk | 20 GB SSD |
+| Internal IP | `10.148.0.2` |
+| Version | Elasticsearch 9.3.1 |
+
+Firewall rule `allow-elasticsearch`:
+- Protocol: TCP port 9200
+- Source: `10.128.0.0/9` (internal GCP only)
+- Target tags: `elasticsearch`
+
+### Secret Manager
+
+Secrets được lưu trong GCP Secret Manager và inject vào Cloud Run:
+
+| Secret Name | Mô tả |
+|-------------|-------|
+| `DATABASE_URL` | PostgreSQL connection string |
+| `ES_HOST` | Elasticsearch internal IP (`10.148.0.2`) |
+| `ES_PASSWORD` | Elasticsearch password |
+| `JWT_SECRET_KEY` | JWT signing key |
+| `OPENAI_API_KEY` | OpenAI API key (nếu dùng) |
+| `GOOGLE_API_KEY` | Google AI API key (nếu dùng) |
 
 ---
 
-## Railway Deployment
+## Service Account
 
-The application is hosted on [Railway](https://railway.app) with the following services:
+Service account `circleci-deployer@learning-agent-486514.iam.gserviceaccount.com` có các quyền:
 
-| Service | Description |
-|---------|-------------|
-| **Frontend** | Next.js app served via Docker |
-| **Backend** | FastAPI server via Docker |
-| **Elasticsearch** | Vector + full-text search (BM25 + kNN) |
-| **PostgreSQL** | Relational database (Railway managed) |
+| Role | Mục đích |
+|------|---------|
+| `roles/storage.admin` | Push images lên GCR |
+| `roles/artifactregistry.writer` | Push lên Artifact Registry |
+| `roles/run.admin` | Deploy Cloud Run services |
+| `roles/secretmanager.secretAccessor` | Đọc secrets |
+| `roles/iam.serviceAccountUser` | ActAs Compute service account khi deploy |
 
-### Live URLs
+### Tạo key mới (khi cần):
 
-- **App**: https://frontend-production-926f.up.railway.app
+```bash
+gcloud iam service-accounts keys create /tmp/circleci-key.json \
+  --iam-account=circleci-deployer@learning-agent-486514.iam.gserviceaccount.com
+
+# Encode sang base64 và lưu vào CircleCI
+base64 -w 0 /tmp/circleci-key.json
+
+rm /tmp/circleci-key.json
+```
 
 ---
 
 ## Setup Guide
 
-### 1. GitHub Actions
+### 1. GCP Setup
 
-Already configured via `.github/workflows/ci-cd.yml`. Just add the required secrets:
+```bash
+# Enable các APIs cần thiết
+gcloud services enable run.googleapis.com \
+  containerregistry.googleapis.com \
+  secretmanager.googleapis.com \
+  sqladmin.googleapis.com \
+  --project=learning-agent-486514
 
-1. Go to **Settings → Secrets and variables → Actions**
-2. Add `DOCKER_USERNAME` and `DOCKER_PASSWORD`
+# Authenticate Docker với GCR
+gcloud auth configure-docker
+```
 
-### 2. CircleCI
+### 2. CircleCI Setup
 
-1. Connect your GitHub repository to [CircleCI](https://circleci.com)
-2. Go to **Project Settings → Environment Variables**
-3. Add `DOCKER_USERNAME`, `DOCKER_PASSWORD`, and `RAILWAY_TOKEN`
+1. Connect repository tại [circleci.com](https://circleci.com)
+2. **Project Settings → Environment Variables** → Thêm 4 biến:
+   - `GCP_PROJECT`, `GCP_REGION`, `GCP_SERVICE_ACCOUNT_KEY`, `BACKEND_URL`
 
-### 3. Railway
+### 3. Deploy lần đầu (thủ công)
 
-1. Create a project on [Railway](https://railway.app)
-2. Add services for Backend, Frontend, Elasticsearch, and PostgreSQL
-3. Configure environment variables for each service
-4. Generate a `RAILWAY_TOKEN` and add it to CircleCI
+```bash
+# Build & push backend
+docker tag learning_assistant-backend:latest \
+  gcr.io/learning-agent-486514/learning-assistant-backend:latest
+docker push gcr.io/learning-agent-486514/learning-assistant-backend:latest
+
+# Deploy backend
+gcloud run deploy learning-assistant-backend \
+  --image gcr.io/learning-agent-486514/learning-assistant-backend:latest \
+  --platform managed \
+  --region asia-southeast1 \
+  --project learning-agent-486514
+
+# Lấy URL backend → set vào CircleCI BACKEND_URL
+gcloud run services describe learning-assistant-backend \
+  --region asia-southeast1 \
+  --format="value(status.url)"
+```
+
+---
+
+## Rollback
+
+Để rollback về một commit cụ thể:
+
+```bash
+# Xem danh sách images
+gcloud container images list-tags gcr.io/learning-agent-486514/learning-assistant-backend
+
+# Rollback về commit hash cụ thể
+gcloud run deploy learning-assistant-backend \
+  --image gcr.io/learning-agent-486514/learning-assistant-backend:<CIRCLE_SHA1> \
+  --platform managed \
+  --region asia-southeast1 \
+  --project learning-agent-486514
+```
+
+---
+
+## Ước tính chi phí (Free Trial $300)
+
+| Service | Chi phí/tháng |
+|---------|---------------|
+| Cloud Run (backend, ~4h/ngày) | ~$7-10 |
+| GCE VM Elasticsearch (e2-medium) | ~$32 |
+| Cloud SQL (db-f1-micro) | ~$10 |
+| **Tổng** | **~$50/tháng** |
+
+> Free trial $300 → dùng được khoảng **6 tháng**.
+> Sau 90 ngày nếu không nhấn "Activate" → tài khoản suspended, không tự động tính phí.
